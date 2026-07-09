@@ -1,0 +1,5 @@
+myenv/
+.env
+outputs
+uploads/processed
+__pycache__/
