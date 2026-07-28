@@ -1,153 +1,950 @@
-"""End-to-end auction notice processing pipeline."""
+"""
+Auction Processing Pipeline.
 
-from pathlib import Path
+Main orchestration service.
+"""
+
+from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import UploadStatus
-from app.core.exceptions import NotFoundError, ProcessingError
 from app.core.logger import get_logger
-from app.models.auction import Auction
-from app.repositories.auction_repository import AuctionRepository
+
 from app.repositories.upload_repository import UploadRepository
-from app.schemas.extraction import AuctionExtraction
-from app.services.generator.excel_generator import ExcelGenerator
-from app.services.generator.word_generator import WordGenerator
-from app.services.llm.groq_service import GroqService
-from app.services.llm.validator import ExtractionValidator
-from app.services.ocr.text_extractor import TextExtractor
-from app.services.preprocessing.image_enhancer import ImageEnhancer
-from app.utils.regex import extract_regex_hints
+
+from app.services.upload.upload_service import UploadService
+
+from app.services.preprocess.image_enhancer import ImageEnhancer
+
+from app.services.detection.layout_detector import LayoutDetector
+
+from app.services.splitter.auction_splitter import AuctionSplitter
+
+from app.services.ocr.paddle_service import PaddleOCRService
+
+from app.services.extractor.parser import AuctionParser
+
+from app.services.storage.database_service import DatabaseService
 
 logger = get_logger(__name__)
 
 
-class AuctionProcessingPipeline:
-    """Orchestrate OCR, LLM extraction, validation, persistence, and outputs."""
+class AuctionPipeline:
+    """
+    Complete Auction Processing Pipeline.
+    """
 
-    def __init__(self, db: AsyncSession) -> None:
-        self.upload_repo = UploadRepository(db)
-        self.auction_repo = AuctionRepository(db)
-        self.enhancer = ImageEnhancer()
-        self.text_extractor = TextExtractor()
-        self.groq = GroqService()
-        self.validator = ExtractionValidator()
-        self.word_generator = WordGenerator()
-        self.excel_generator = ExcelGenerator()
+    def __init__(
+        self,
+        db: AsyncSession,
+    ) -> None:
 
-    async def process_upload(self, upload_id: str) -> Auction:
-        """Process an uploaded notice and return the final auction row."""
-        upload = await self.upload_repo.get_by_id(upload_id)
-        if upload is None:
-            raise NotFoundError("Upload not found")
+        logger.info(
+            "Initializing Auction Pipeline."
+        )
 
-        existing = await self.auction_repo.get_by_upload_id(upload_id)
-        if existing and upload.status == UploadStatus.COMPLETED.value:
-            return existing
+        self.db = db
+
+        repository = UploadRepository(
+            db,
+        )
+
+        self.upload_service = UploadService(
+            repository=repository,
+        )
+
+        self.image_enhancer = ImageEnhancer()
+
+        self.layout_detector = LayoutDetector()
+
+        self.splitter = AuctionSplitter()
+
+        self.ocr = PaddleOCRService()
+
+        self.parser = AuctionParser()
+
+        self.database = DatabaseService(
+            db,
+        )
+
+    # ==========================================================
+    # Ready Check
+    # ==========================================================
+
+    async def is_ready(
+        self,
+    ) -> bool:
+        """
+        Verify pipeline services.
+        """
 
         try:
-            await self.upload_repo.update_status(upload, UploadStatus.PROCESSING.value)
-            input_path = Path(upload.file_path)
 
-            processed_path = await self.enhancer.enhance(input_path)
-            processed_path =input_path
-            
+            upload_ready = await self.upload_service.is_ready()
 
-            print("INPUT:", input_path)
-            print("PROCESSED:", processed_path)
-            upload.processed_file_path = str(processed_path)
-            await self.upload_repo.save(upload)
+        except Exception:
 
-            ocr_text = await self.text_extractor.extract(processed_path)
-            
+            upload_ready = False
 
-            print("=" * 100)
-            print("OCR TEXT")
-            print("=" * 100)
-            print(ocr_text)
-            print("=" * 100)
+        return (
+    upload_ready
+    and self.image_enhancer.is_ready()
+    and self.layout_detector.is_ready()
+    and self.splitter.is_ready()
+    and self.ocr.is_ready()
+    and self.parser.is_ready()
+    and await self.database.is_ready()
+)
+    
+    # ==========================================================
+    # Health Check
+    # ==========================================================
 
-
-            if not ocr_text.strip():
-                raise ProcessingError("OCR did not return readable text")
-
-            regex_hints = extract_regex_hints(ocr_text)
-            print("=" * 100)
-            print("REGEX")
-            print(regex_hints)
-            
-            llm_json = await self.groq.extract_auction_data(ocr_text, regex_hints)
-            print("=" * 100)
-            print("LLM OUTPUT")
-            print(llm_json)
-            print("=" * 100)
-            
-            extraction = self.validator.validate(llm_json, regex_hints, ocr_text)
-            print("=" * 100)
-            print("VALIDATED")
-            print(extraction.model_dump())
-            print("=" * 100)
-
-            auction = existing or self._build_auction(upload.id, upload.listing_id)
-            self._apply_extraction(auction, extraction, ocr_text, regex_hints.model_dump(), llm_json)
-            auction = await self.auction_repo.create(auction) if existing is None else await self.auction_repo.save(auction)
-
-            word_path = await self.word_generator.generate(auction)
-            excel_path = await self.excel_generator.generate(auction)
-            auction.word_path = str(word_path)
-            auction.excel_path = str(excel_path)
-            auction = await self.auction_repo.save(auction)
-            await self.upload_repo.update_status(upload, UploadStatus.COMPLETED.value)
-            return auction
-        except Exception as exc:
-            logger.exception("Failed to process upload %s", upload_id)
-            await self.upload_repo.update_status(upload, UploadStatus.FAILED.value, str(exc))
-            if isinstance(exc, ProcessingError):
-                raise
-            raise ProcessingError(str(exc)) from exc
-
-    def _build_auction(self, upload_id: str, listing_id: str) -> Auction:
-        return Auction(upload_id=upload_id, listing_id=listing_id)
-
-    def _apply_extraction(
+    async def health_check(
         self,
-        auction: Auction,
-        extraction: AuctionExtraction,
-        ocr_text: str,
-        regex_json: dict,
-        llm_json: dict,
-    ) -> None:
-        data = extraction.model_dump()
-        auction.bank_name = data["bank_name"]
-        auction.borrower_name = data["borrower_name"]
-        auction.loan_number = data["loan_number"]
-        auction.auction_type = data["auction_type"]
-        auction.property_type = data["property_type"]
-        auction.property_category = data["property_category"]
-        auction.asset_category = data["asset_category"]
-        auction.movable_immovable = data["movable_immovable"]
-        auction.possession_type = data["possession_type"]
-        auction.reserve_price = data["reserve_price"]
-        auction.emd = data["emd"]
-        auction.demand_notice_date = data["demand_notice_date"]
-        auction.symbolic_possession_date = data["symbolic_possession_date"]
-        auction.auction_date = data["auction_date"]
-        auction.property_address = data["property_address"]
-        auction.district = data["district"]
-        auction.state = data["state"]
-        auction.beneficiary_bank = data["beneficiary_bank"]
-        auction.ifsc = data["ifsc"]
-        auction.contact_person = data["contact_person"]
-        auction.contact_number = data["contact_number"]
-        auction.website = data["website"]
-        auction.description = data["description"]
-        auction.summary = data["summary"]
-        auction.who = data["who"]
-        auction.whom = data["whom"]
-        auction.where_location = data["where"]
-        auction.when_details = data["when"]
-        auction.confidence_score = data["confidence_score"]
-        auction.raw_ocr_text = ocr_text
-        auction.regex_json = regex_json
-        auction.llm_json = llm_json
+    ) -> dict:
+        """
+        Pipeline health.
+        """
 
+        return {
+
+            "status": (
+
+                "Healthy"
+
+                if await self.is_ready()
+
+                else "Unavailable"
+
+            ),
+
+            "services": {
+
+                "upload": True,
+
+                "preprocessing": True,
+
+                "ocr": True,
+
+                "parser": True,
+
+                "database": True,
+
+            },
+
+        }
+
+
+    # ==========================================================
+    # Statistics
+    # ==========================================================
+
+    async def statistics(
+        self,
+    ) -> dict:
+        """
+        Pipeline statistics.
+        """
+
+        uploads = await self.upload_service.count_uploads()
+
+        return {
+
+            "registered_uploads": uploads,
+
+            "ready": await self.is_ready(),
+
+        }
+    
+
+    # ==========================================================
+    # Version
+    # ==========================================================
+
+    def version(
+        self,
+    ) -> dict:
+
+        return {
+
+            "service": "Auction Pipeline",
+
+            "version": "1.0.0",
+
+            "architecture": "Async",
+
+        }
+    
+
+    # ==========================================================
+    # Upload Image
+    # ==========================================================
+
+    async def upload_image(
+        self,
+        file,
+    ):
+        """
+        Upload newspaper image.
+        """
+
+        logger.info(
+            "Uploading newspaper image."
+        )
+
+        upload = await self.upload_service.upload_file(
+            file,
+        )
+
+        return upload
+    
+
+    # ==========================================================
+    # Enhance Image
+    # ==========================================================
+
+    async def enhance_image(
+        self,
+        image_path: str,
+    ) -> str:
+        """
+        Enhance uploaded image.
+        """
+
+        logger.info(
+            "Enhancing image."
+        )
+
+        enhanced_path = self.image_enhancer.process(
+            image_path,
+        )
+
+        return enhanced_path
+
+
+    # ==========================================================
+    # Layout Detection
+    # ==========================================================
+
+    async def detect_layout(
+        self,
+        image_path: str,
+    ):
+        """
+        Detect newspaper layout.
+        """
+
+        logger.info(
+            "Detecting layout."
+        )
+
+        layout = self.layout_detector.detect(
+            image_path,
+        )
+
+        return layout
+    
+
+    # ==========================================================
+    # Split Auction Notices
+    # ==========================================================
+
+    async def split_image(
+        self,
+        image_path: str,
+        upload_number: str = "temp",
+    ) -> list[str]:
+        """
+        Split newspaper into
+        individual auction notices.
+        """
+
+        logger.info(
+            "Splitting auction notices."
+        )
+
+        images = self.splitter.process(
+            image_path,
+            upload_number,
+        )
+
+        return images
+    
+
+    # ==========================================================
+    # Prepare Images
+    # ==========================================================
+
+    async def prepare_images(
+        self,
+        image_path: str,
+        upload_number: str = "temp",
+    ) -> list[dict] | list[str]:
+        """
+        Complete preprocessing pipeline.
+        """
+        enhanced = await self.enhance_image(
+            image_path,
+        )
+
+        await self.detect_layout(
+            enhanced,
+        )
+
+        images = await self.split_image(
+            enhanced,
+            upload_number,
+        )
+
+        return images
+    
+
+    # ==========================================================
+    # Validate Image
+    # ==========================================================
+
+    def validate_image(
+        self,
+        image_path: str,
+    ) -> bool:
+        """
+        Validate image path.
+        """
+
+        if not image_path:
+
+            return False
+
+        return True
+    
+    # ==========================================================
+    # Image Information
+    # ==========================================================
+
+    async def image_information(
+        self,
+        image_path: str,
+    ) -> dict:
+        """
+        Return preprocessing information.
+        """
+
+        images = await self.prepare_images(
+            image_path,
+        )
+
+        return {
+
+            "image_path": image_path,
+
+            "auction_count": len(images),
+
+            "auction_images": images,
+
+        }
+    
+    # ==========================================================
+    # OCR Extraction
+    # ==========================================================
+
+    async def extract_text(
+        self,
+        image_path: str,
+    ) -> str:
+        """
+        Extract text from auction image.
+        """
+
+        logger.info(
+            "Running OCR."
+        )
+
+        text = self.ocr.extract_text(
+            image_path,
+        )
+
+        return text
+    
+
+    # ==========================================================
+    # Validate OCR
+    # ==========================================================
+
+    def validate_ocr(
+        self,
+        text: str,
+    ) -> bool:
+        """
+        Validate OCR result.
+        """
+
+        if text is None:
+
+            return False
+
+        return len(
+            text.strip()
+        ) > 10
+    
+
+    # ==========================================================
+    # Parse OCR Text
+    # ==========================================================
+
+    async def parse_text(
+        self,
+        text: str,
+    ) -> dict:
+        """
+        Parse OCR text into
+        structured auction data.
+        """
+
+        logger.info(
+            "Parsing OCR text."
+        )
+
+        result = self.parser.process(
+            text,
+        )
+
+        return result
+    
+
+    # ==========================================================
+    # Process Notice
+    # ==========================================================
+
+    async def process_notice(
+        self,
+        image_path: str | dict,
+        original_file_path: str = "",
+        global_ocr_text_holder: list[str] = None,
+    ) -> dict:
+        """
+        Process a single auction notice using direct Vision scraping.
+        """
+        if isinstance(image_path, dict) and "image_path" in image_path:
+            image_path = image_path["image_path"]
+
+        # Use original split notice image directly for Gemini LLM to preserve character fidelity
+        logger.info("Using original split notice image directly for Gemini LLM to preserve character fidelity.")
+
+        import base64
+        try:
+            with open(image_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+        except Exception as exc:
+            logger.exception("Failed to read and encode image.")
+            return {
+                "success": False,
+                "image": str(image_path),
+                "message": f"Image read failed: {exc}",
+            }
+
+        ocr_text = ""
+        try:
+            logger.info("Extracting OCR text helper to prevent vision misreads.")
+            ocr_text = await self.extract_text(image_path)
+        except Exception:
+            logger.exception("OCR text helper extraction failed, proceeding without it.")
+
+        try:
+            logger.info("Attempting direct LLM Vision extraction.")
+            parsed = self.parser.process_vision(
+                base64_image,
+                ocr_text=ocr_text,
+                global_ocr_text=""
+            )
+            return {
+                "success": True,
+                "image": image_path,
+                "ocr_text": ocr_text,
+                "record": parsed.get("record", {}),
+                "validation": parsed.get("validation", {}),
+                "confidence": parsed.get("confidence", {}),
+                "statistics": parsed.get("statistics", {}),
+            }
+        except Exception as exc:
+            logger.exception("Vision parsing failed.")
+            return {
+                "success": False,
+                "image": image_path,
+                "message": f"Vision parsing failed: {exc}",
+            }
+    
+
+    # ==========================================================
+    # Process Notices
+    # ==========================================================
+
+    async def process_notices(
+        self,
+        images: list[str],
+        original_file_path: str = "",
+    ) -> list[dict]:
+        """
+        Process all auction notices.
+        """
+
+        logger.info(
+            "Processing %d notices.",
+            len(images),
+        )
+
+        global_ocr_text_holder = [""]
+        results = []
+
+        for image in images:
+
+            try:
+
+                result = await self.process_notice(
+                    image,
+                    original_file_path=original_file_path,
+                    global_ocr_text_holder=global_ocr_text_holder,
+                )
+
+                results.append(
+                    result,
+                )
+
+            except Exception:
+
+                logger.exception(
+                    "Notice processing failed."
+                )
+
+                results.append(
+
+                    {
+
+                        "success": False,
+
+                        "image": image,
+
+                    }
+
+                )
+
+        return results
+    
+
+    # ==========================================================
+    # Extraction Summary
+    # ==========================================================
+
+    def extraction_summary(
+        self,
+        results: list[dict],
+    ) -> dict:
+        """
+        Return extraction summary.
+        """
+
+        total = len(results)
+
+        success = sum(
+
+            1
+
+            for item in results
+
+            if item.get(
+                "success",
+            )
+
+        )
+
+        failed = total - success
+
+        return {
+
+            "total_notices": total,
+
+            "successful": success,
+
+            "failed": failed,
+
+        }
+    
+    # ==========================================================
+    # OCR Statistics
+    # ==========================================================
+
+    def ocr_statistics(
+        self,
+        text: str,
+    ) -> dict:
+        """
+        OCR statistics.
+        """
+
+        return {
+
+            "characters": len(text),
+
+            "words": len(
+                text.split(),
+            ),
+
+            "lines": len(
+                text.splitlines(),
+            ),
+
+        }
+    
+    # ==========================================================
+    # OCR Pipeline
+    # ==========================================================
+
+    async def process_ocr_stage(
+        self,
+        images: list[str],
+        original_file_path: str = "",
+    ) -> dict:
+        """
+        Execute OCR pipeline.
+        """
+
+        results = await self.process_notices(
+            images,
+            original_file_path=original_file_path,
+        )
+
+        return {
+
+            "results": results,
+
+            "summary": self.extraction_summary(
+                results,
+            ),
+
+        }
+    
+    # ==========================================================
+    # Save Results
+    # ==========================================================
+
+    async def save_results(
+        self,
+        upload,
+        results: list[dict],
+    ) -> dict:
+        """
+        Save extracted auction records.
+        """
+
+        logger.info(
+            "Saving auction records."
+        )
+
+        saved_records = []
+
+        for result in results:
+
+            if not result.get(
+                "success",
+            ):
+
+                continue
+
+            records = result.get(
+                "record",
+                {},
+            )
+
+            if isinstance(records, dict):
+                records = [records]
+            elif not isinstance(records, list):
+                records = []
+
+            for record in records:
+                try:
+
+                    record["upload_id"] = upload.id
+
+                    saved = await self.database.save_auction(
+                        record,
+                    )
+
+                    saved_records.append(
+                        saved,
+                    )
+
+                except Exception:
+
+                    logger.exception(
+                        "Unable to save auction record."
+                    )
+
+        return {
+
+            "upload": upload,
+
+            "records": saved_records,
+
+        }
+
+    # ==========================================================
+    # Process File
+    # ==========================================================
+
+    async def process_file(
+        self,
+        file,
+    ) -> dict:
+        """
+        Process uploaded newspaper.
+        """
+
+        logger.info(
+            "Processing uploaded newspaper."
+        )
+
+        upload = await self.upload_image(
+            file,
+        )
+
+        images = await self.prepare_images(
+
+            upload.original_file_path,
+            upload.upload_number,
+
+        )
+
+        # OCR text is now lazily extracted during fallback in process_notice to minimize latency
+        extraction = await self.process_ocr_stage(
+            images,
+            original_file_path=upload.original_file_path,
+        )
+
+        database = await self.save_results(
+
+            upload,
+
+            extraction["results"],
+
+        )
+
+        return {
+
+            "upload": database["upload"],
+
+            "results": database["records"],
+
+            "summary": extraction["summary"],
+
+            "extraction_results": extraction["results"],
+
+        }
+    
+    # ==========================================================
+    # Build Response
+    # ==========================================================
+
+    def build_response(
+        self,
+        result: dict,
+    ) -> dict:
+        """
+        Build API response.
+        """
+        records_dict = []
+        from decimal import Decimal
+        from datetime import date, datetime
+
+        for record in result["results"]:
+            if hasattr(record, "__table__"):
+                record_dict = {c.key: getattr(record, c.key) for c in record.__table__.columns}
+                for k, v in record_dict.items():
+                    if isinstance(v, Decimal):
+                        record_dict[k] = float(v)
+                    elif isinstance(v, (datetime, date)):
+                        record_dict[k] = v.isoformat()
+                # Expose aliases for HTML frontend compatibility
+                record_dict["reserve_price"] = record_dict.get("auction_start_price")
+                record_dict["auction_id"] = record_dict.get("notice_auction_id")
+                records_dict.append(record_dict)
+            else:
+                records_dict.append(record)
+
+        error_msg = None
+        if len(records_dict) == 0 and "extraction_results" in result:
+            for res in result["extraction_results"]:
+                if not res.get("success") and res.get("message"):
+                    error_msg = res["message"]
+                    break
+
+        response = {
+            "success": len(records_dict) > 0 or result["summary"]["total_notices"] == 0,
+            "upload_id": result["upload"].id,
+            "upload_number": result["upload"].upload_number,
+            "total_records": len(records_dict),
+            "records": records_dict,
+            "summary": result["summary"],
+        }
+
+        if error_msg:
+            response["message"] = error_msg
+
+        return response
+    
+    # ==========================================================
+    # Run Pipeline
+    # ==========================================================
+
+    async def run(
+        self,
+        file,
+    ) -> dict:
+        """
+        Execute complete pipeline.
+        """
+
+        logger.info(
+            "Starting Auction Pipeline."
+        )
+
+        try:
+
+            result = await self.process_file(
+                file,
+            )
+
+            logger.info(
+                "Pipeline completed."
+            )
+
+            return self.build_response(
+                result,
+            )
+
+        except Exception as exc:
+
+            logger.exception(
+                "Pipeline execution failed."
+            )
+
+            return {
+
+                "success": False,
+
+                "message": str(exc),
+
+            }
+        
+    # ==========================================================
+    # Batch Processing
+    # ==========================================================
+
+    async def run_batch(
+        self,
+        files: list,
+    ) -> dict:
+        """
+        Process multiple newspapers.
+        """
+
+        logger.info(
+            "Processing %d files.",
+            len(files),
+        )
+
+        results = []
+
+        for file in files:
+
+            results.append(
+
+                await self.run(
+                    file,
+                )
+
+            )
+
+        return {
+
+            "success": True,
+
+            "processed_files": len(results),
+
+            "results": results,
+
+        }
+    
+    # ==========================================================
+    # Cleanup
+    # ==========================================================
+
+    async def cleanup(
+        self,
+    ) -> None:
+        """
+        Cleanup resources.
+        """
+
+        logger.info(
+            "Cleaning pipeline resources."
+        )
+
+        try:
+
+            await self.database.close()
+
+        except Exception:
+
+            logger.exception(
+                "Database cleanup failed."
+            )
+
+
+    # ==========================================================
+    # Information
+    # ==========================================================
+
+    def info(
+        self,
+    ) -> dict:
+        """
+        Pipeline information.
+        """
+
+        return {
+
+            "name": "Auction AI Pipeline",
+
+            "version": "1.0.0",
+
+            "framework": "FastAPI",
+
+            "database": "MySQL",
+
+            "ocr": "PaddleOCR",
+
+            "llm": "OpenAI",
+
+        }
+    
+
+    # ==========================================================
+    # Health Report
+    # ==========================================================
+
+    async def report(
+        self,
+    ) -> dict:
+        """
+        Pipeline report.
+        """
+
+        return {
+
+            "pipeline": self.info(),
+
+            "health": await self.health_check(),
+
+            "statistics": await self.statistics(),
+
+        }

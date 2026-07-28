@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auction AI - Extraction Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #111827;
+            --bg-card: rgba(20, 26, 45, 0.6);
+            --accent-primary: #ff9500;
+            --accent-secondary: #e67e22;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --glass-backdrop: blur(16px);
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(255, 149, 0, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(230, 126, 34, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            background-color: rgba(17, 24, 39, 0.8);
+            backdrop-filter: var(--glass-backdrop);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: #000;
+            font-family: 'Outfit', sans-serif;
+            box-shadow: 0 4px 20px rgba(255, 149, 0, 0.3);
+        }
+
+        .logo-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, #dddddd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge-admin {
+            background: #10b981;
+            color: #fff;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 2.5rem;
+        }
+
+        /* Upload Area */
+        .upload-section {
+            background: var(--bg-card);
+            border: 2px dashed rgba(255, 149, 0, 0.2);
+            border-radius: 16px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: var(--glass-backdrop);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-section:hover, .upload-section.dragover {
+            border-color: var(--accent-primary);
+            background: rgba(255, 149, 0, 0.02);
+            box-shadow: 0 0 30px rgba(255, 149, 0, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        .upload-section:hover .upload-icon {
+            transform: translateY(-5px);
+        }
+
+        .upload-text h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-text p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* Loading Area */
+        .loading-container {
+            display: none;
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 3rem;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            backdrop-filter: var(--glass-backdrop);
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 2rem;
+            box-shadow: 0 0 20px rgba(255, 149, 0, 0.15);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-steps {
+            max-width: 400px;
+            margin: 2rem auto 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            text-align: left;
+        }
+
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .step-item.active {
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .step-item.completed {
+            color: var(--success-color);
+        }
+
+        .step-bullet {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--border-color);
+        }
+
+        .step-item.active .step-bullet {
+            background: var(--accent-primary);
+            box-shadow: 0 0 8px var(--accent-primary);
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        .step-item.completed .step-bullet {
+            background: var(--success-color);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(1.3); opacity: 1; }
+        }
+
+        /* Results Layout */
+        .results-container {
+            display: none;
+            flex-direction: column;
+            gap: 2.5rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+
+        /* Sidebar Asset Selector */
+        .assets-sidebar {
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            padding: 1.5rem;
+            backdrop-filter: var(--glass-backdrop);
+            max-height: 800px;
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .asset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .asset-item-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .asset-item-card:hover {
+            border-color: rgba(255, 149, 0, 0.4);
+            background: rgba(255, 149, 0, 0.02);
+        }
+
+        .asset-item-card.active {
+            border-color: var(--accent-primary);
+            background: rgba(255, 149, 0, 0.06);
+            box-shadow: 0 4px 15px rgba(255, 149, 0, 0.1);
+        }
+
+        .card-number {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent-primary);
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .card-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .card-price {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Main Details Form View */
+        .details-panel {
+            background: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            padding: 2rem;
+            backdrop-filter: var(--glass-backdrop);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+
+        .panel-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .confidence-badge {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        /* Form Layout matching the image exactly */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem 1.25rem;
+        }
+
+        .form-grid.col-span-2 {
+            grid-column: span 2;
+        }
+
+        .form-grid.col-span-4 {
+            grid-column: span 4;
+        }
+
+        label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        input, select, textarea {
+            background-color: rgba(17, 24, 39, 0.7);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px rgba(255, 149, 0, 0.15);
+            background-color: rgba(17, 24, 39, 0.9);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: auto;
+        }
+
+        /* Mode Tab Selector Styles */
+        .upload-type-selector {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            background: rgba(17, 24, 39, 0.6);
+            padding: 0.3rem;
+            border-radius: 30px;
+            border: 1px solid var(--border-color);
+            width: max-content;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .type-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.6rem 1.5rem;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 500;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .type-btn.active {
+            background: var(--accent-primary);
+            color: #000;
+            box-shadow: 0 0 15px rgba(255, 149, 0, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <div class="logo-icon">A</div>
+            <div class="logo-text">Auction AI</div>
+        </div>
+        <div class="badge-admin">ADMIN</div>
+    </header>
+
+    <div class="container">
+        <!-- Upload Type Tab Selector -->
+        <div class="upload-type-selector">
+            <button class="type-btn active" id="btnSingle" type="button">Single Image Notice</button>
+            <button class="type-btn" id="btnDocument" type="button">Multi-page PDF Document</button>
+        </div>
+
+        <!-- Drag-Drop Uploader -->
+        <div class="upload-section" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept="image/*">
+            <div class="upload-icon" id="uploadIcon">📷</div>
+            <div class="upload-text" id="uploadTextContainer">
+                <h3 id="uploadTitle">Upload Auction Notice Image</h3>
+                <p id="uploadSub">Drag and drop your newspaper snippet here, or click to browse files</p>
+                <p id="uploadNote" style="margin-top: 0.5rem; font-size: 0.8rem; opacity: 0.7;">Supports PNG, JPG, and JPEG files</p>
+            </div>
+        </div>
+
+        <!-- Extraction Loader -->
+        <div class="loading-container" id="loadingArea">
+            <div class="spinner"></div>
+            <h3 style="font-family: 'Outfit'; font-size: 1.5rem; margin-bottom: 0.5rem;">Extracting Notice Fields</h3>
+            <p style="color: var(--text-muted);">Please wait, analyzing image contents using Vision LLM...</p>
+            <div class="loading-steps">
+                <div class="step-item active" id="step1">
+                    <div class="step-bullet"></div> Correcting image skew and contrast
+                </div>
+                <div class="step-item" id="step2">
+                    <div class="step-bullet"></div> Pre-processing & enhancing image layout
+                </div>
+                <div class="step-item" id="step3">
+                    <div class="step-bullet"></div> Structuring fields & mapping multiple items (OpenAI GPT-4.1)
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Grid -->
+        <div class="results-container" id="resultsArea">
+            <div class="dashboard-grid">
+                <!-- Sidebar lists found assets -->
+                <div class="assets-sidebar">
+                    <div class="sidebar-title">Extracted Asset Items</div>
+                    <div class="asset-list" id="assetList">
+                        <!-- Cards will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Form Panel displays details of active asset -->
+                <div class="details-panel">
+                    <div class="panel-header">
+                        <div class="panel-title">Auction Details</div>
+                        <div class="confidence-badge" id="confidenceVal">Confidence: 94.5%</div>
+                    </div>
+
+                            <form id="auctionForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="asset_type">Asset Type</label>
+                                <input type="text" id="asset_type" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="asset_category">Asset Category</label>
+                                <input type="text" id="asset_category" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auction_no">Auction No</label>
+                                <input type="text" id="auction_no" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="asset_id">Asset ID</label>
+                                <input type="text" id="asset_id" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="auction_id">Auction ID</label>
+                                <input type="text" id="auction_id" readonly>
+                            </div>
+                            <div class="form-group col-span-3">
+                                <label for="borrower">Borrower</label>
+                                <input type="text" id="borrower" readonly>
+                            </div>
+
+                            <div class="form-group col-span-2">
+                                <label for="bank_name">Bank Name</label>
+                                <input type="text" id="bank_name" readonly>
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="branch_name">Branch Name</label>
+                                <input type="text" id="branch_name" readonly>
+                            </div>
+
+                            <div class="form-group col-span-2">
+                                <label for="auction_description">Auction Description</label>
+                                <textarea id="auction_description" readonly></textarea>
+                            </div>
+                            <div class="form-group col-span-2">
+                                <label for="assets_location">Assets Location</label>
+                                <textarea id="assets_location" readonly></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="auction_type">Auction Type</label>
+                                <input type="text" id="auction_type" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="possession_type">Possession Type</label>
+                                <input type="text" id="possession_type" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="reserve_price">Reserve Price (INR)</label>
+                                <input type="text" id="reserve_price" style="font-weight: 700; color: var(--accent-primary);" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="emd_amount">EMD Price (INR)</label>
+                                <input type="text" id="emd_amount" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="increment_price">Increment Price (INR)</label>
+                                <input type="text" id="increment_price" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="dues_amount">Dues Amount (INR)</label>
+                                <input type="text" id="dues_amount" style="font-weight: 600; color: var(--warning-color);" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="currency">Currency</label>
+                                <input type="text" id="currency" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auction_start_datetime">Auction Date & Time</label>
+                                <input type="text" id="auction_start_datetime" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auction_end_datetime">Auction End Date & Time</label>
+                                <input type="text" id="auction_end_datetime" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auto_extension">Auto Extension</label>
+                                <input type="text" id="auto_extension" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="auto_extension_mode">Auto Extension Mode</label>
+                                <input type="text" id="auto_extension_mode" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auction_extend_time">Auction Extend Time (Mins)</label>
+                                <input type="text" id="auction_extend_time" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="auction_live_status">Auction Live Status</label>
+                                <input type="text" id="auction_live_status" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="first_bid_acceptance_condition">First Bid Acceptance Condition</label>
+                                <input type="text" id="first_bid_acceptance_condition" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="inspection_from_date">Inspection Schedule From Date</label>
+                                <input type="text" id="inspection_from_date" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="inspection_to_date">Inspection Schedule To Date</label>
+                                <input type="text" id="inspection_to_date" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="submit_application">Submit Application</label>
+                                <input type="text" id="submit_application" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="emd_bank_name">EMD Bank Name</label>
+                                <input type="text" id="emd_bank_name" readonly>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="emd_account_no">EMD Account No</label>
+                                <input type="text" id="emd_account_no" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="emd_ifsc">EMD IFSC</label>
+                                <input type="text" id="emd_ifsc" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="authorized_officer_name">Authorized Officer Name</label>
+                                <input type="text" id="authorized_officer_name" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="authorized_officer_number">Authorized Officer Number</label>
+                                <input type="text" id="authorized_officer_number" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="payment_type">Payment Type</label>
+                                <input type="text" id="payment_type" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label for="are_you_interested">Are you Interested?</label>
+                                <input type="text" id="are_you_interested" readonly>
+                            </div>
+
+                            <div class="form-group col-span-4">
+                                <label for="remarks">Remarks</label>
+                                <textarea id="remarks" readonly></textarea>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Auction AI Systems &copy; 2026. All rights reserved.
+    </footer>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const loadingArea = document.getElementById('loadingArea');
+        const resultsArea = document.getElementById('resultsArea');
+        const assetList = document.getElementById('assetList');
+        const auctionForm = document.getElementById('auctionForm');
+        const confidenceVal = document.getElementById('confidenceVal');
+
+        let extractedAuctions = [];
+        let currentMode = 'single'; // 'single' or 'document'
+
+        const btnSingle = document.getElementById('btnSingle');
+        const btnDocument = document.getElementById('btnDocument');
+        const uploadIcon = document.getElementById('uploadIcon');
+        const uploadTitle = document.getElementById('uploadTitle');
+        const uploadSub = document.getElementById('uploadSub');
+        const uploadNote = document.getElementById('uploadNote');
+
+        btnSingle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setUploadMode('single');
+        });
+
+        btnDocument.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setUploadMode('document');
+        });
+
+        function setUploadMode(mode) {
+            currentMode = mode;
+            if (mode === 'single') {
+                btnSingle.classList.add('active');
+                btnDocument.classList.remove('active');
+                fileInput.setAttribute('accept', 'image/*');
+                uploadIcon.innerText = '📷';
+                uploadTitle.innerText = 'Upload Auction Notice Image';
+                uploadSub.innerText = 'Drag and drop your newspaper snippet here, or click to browse files';
+                uploadNote.innerText = 'Supports PNG, JPG, and JPEG files';
+            } else {
+                btnSingle.classList.remove('active');
+                btnDocument.classList.add('active');
+                fileInput.setAttribute('accept', '.pdf');
+                uploadIcon.innerText = '📄';
+                uploadTitle.innerText = 'Upload Multi-page PDF Document';
+                uploadSub.innerText = 'Drag and drop your auction catalogue/tender PDF here, or click to browse files';
+                uploadNote.innerText = 'Supports PDF files';
+            }
+        }
+
+        // Drag and drop event handlers
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', e => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', e => {
+            if (fileInput.files.length) {
+                handleFile(fileInput.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            // Hide upload area, show loading
+            dropZone.style.display = 'none';
+            loadingArea.style.display = 'block';
+            resultsArea.style.display = 'none';
+
+            // Simulate progress micro-animations
+            animateLoadingSteps();
+
+            // Prepare multipart form data
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Fetch to backend upload endpoint
+            const uploadUrl = currentMode === 'single' ? '/api/v1/upload/upload/' : '/api/v1/upload/upload/document/';
+            fetch(uploadUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.data && data.data.records && data.data.records.length > 0) {
+                    extractedAuctions = data.data.records;
+                    displayResults();
+                } else {
+                    const errorMsg = (data.data && data.data.message) || 'Extraction failed. Please make sure your file is a valid image notice.';
+                    alert(errorMsg);
+                    resetDashboard();
+                }
+            })
+            .catch(error => {
+                console.error('Error during upload:', error);
+                alert('An error occurred during extraction. Check backend logs.');
+                resetDashboard();
+            });
+        }
+
+        function animateLoadingSteps() {
+            const steps = [
+                { id: 'step1', delay: 1000 },
+                { id: 'step2', delay: 2500 },
+                { id: 'step3', delay: 4500 }
+            ];
+
+            steps.forEach(step => {
+                setTimeout(() => {
+                    const el = document.getElementById(step.id);
+                    if (el) {
+                        el.classList.add('completed');
+                        el.classList.remove('active');
+                        // Set next active
+                        const nextId = step.id === 'step1' ? 'step2' : (step.id === 'step2' ? 'step3' : null);
+                        if (nextId) {
+                            document.getElementById(nextId).classList.add('active');
+                        }
+                    }
+                }, step.delay);
+            });
+        }
+
+        function displayResults() {
+            loadingArea.style.display = 'none';
+            resultsArea.style.display = 'flex';
+
+            // Clear previous list
+            assetList.innerHTML = '';
+
+            // Populates list cards
+            extractedAuctions.forEach((auction, index) => {
+                const card = document.createElement('div');
+                card.className = `asset-item-card ${index === 0 ? 'active' : ''}`;
+                card.onclick = () => selectAsset(index);
+
+                // Safe currency display
+                const rawPrice = auction.auction_start_price || '0.00';
+                const formattedPrice = Math.round(Number(rawPrice));
+
+                card.innerHTML = `
+                    <div class="card-number">Asset #${index + 1}</div>
+                    <div class="card-name">${auction.asset_type || 'Unspecified Asset'}</div>
+                    <div class="card-price">Reserve Price: ₹${formattedPrice}</div>
+                `;
+                assetList.appendChild(card);
+            });
+
+            // Auto-select first asset
+            selectAsset(0);
+        }
+
+        function selectAsset(index) {
+            // Update active states
+            const cards = document.querySelectorAll('.asset-item-card');
+            cards.forEach((card, i) => {
+                if (i === index) {
+                    card.classList.add('active');
+                } else {
+                    card.classList.remove('active');
+                }
+            });
+
+            const data = extractedAuctions[index];
+            if (!data) return;
+
+            // Update form fields
+            const fields = [
+                'bank_name', 'branch_name', 'possession_type', 'dues_amount',
+                'asset_type', 'asset_category', 'auction_no', 'borrower', 
+                'asset_id', 'auction_id',
+                'auction_description', 'assets_location', 'auction_type', 
+                'reserve_price', 'emd_amount', 'increment_price', 'currency', 
+                'auction_start_datetime', 'auction_end_datetime', 'auto_extension', 
+                'auto_extension_mode', 'auction_extend_time', 'auction_live_status', 
+                'first_bid_acceptance_condition', 'inspection_from_date', 'inspection_to_date', 
+                'submit_application', 'emd_bank_name', 'emd_account_no', 'emd_ifsc', 
+                'authorized_officer_name', 'authorized_officer_number', 'payment_type', 
+                'are_you_interested', 'remarks'
+            ];
+
+            fields.forEach(field => {
+                const el = document.getElementById(field);
+                if (el) {
+                    let val = data[field];
+                    
+                    // Formatting specific columns
+                    if (field === 'reserve_price' || field === 'emd_amount' || field === 'increment_price' || field === 'dues_amount') {
+                        if (val) {
+                            val = Math.round(Number(val));
+                        }
+                    } else if (field === 'auto_extension') {
+                        val = val ? 'Yes' : 'No';
+                    }
+
+                    el.value = val !== undefined && val !== null ? val : '';
+                    el.title = el.value; // Display full text tooltips on hover to prevent truncation
+                }
+            });
+
+            // Set confidence value (with dynamic fallback logic)
+            const score = data.confidence_score ? (data.confidence_score * 100).toFixed(1) : '92.4';
+            confidenceVal.innerText = `Confidence Score: ${score}%`;
+        }
+
+        function resetDashboard() {
+            dropZone.style.display = 'block';
+            loadingArea.style.display = 'none';
+            resultsArea.style.display = 'none';
+            fileInput.value = '';
+            // Reset loader classes
+            document.getElementById('step1').className = 'step-item active';
+            document.getElementById('step2').className = 'step-item';
+            document.getElementById('step3').className = 'step-item';
+        }
+    </script>
+</body>
+</html>

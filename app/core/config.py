@@ -1,91 +1,515 @@
-"""Application configuration loaded from environment variables."""
+"""
+Application Configuration.
+
+Loads all application settings
+from environment variables.
+"""
+
+from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
 
-from pydantic import AnyHttpUrl, BeforeValidator, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+)
 
+# ==========================================================
+# Project Directories
+# ==========================================================
 
+BASE_DIR = Path(__file__).resolve().parents[2]
 
-def _csv_to_list(value: str | list[str]) -> list[str]:
-    """Convert comma-separated env values into a list."""
-    if isinstance(value, list):
-        return value
-    return [item.strip() for item in value.split(",") if item.strip()]
+APP_DIR = BASE_DIR / "app"
 
+UPLOAD_DIR = BASE_DIR / "uploads"
+
+LOG_DIR = BASE_DIR / "logs"
+
+MODEL_DIR = BASE_DIR / "models"
+
+TEMP_DIR = BASE_DIR / "temp"
+
+# ==========================================================
+# Settings
+# ==========================================================
 
 class Settings(BaseSettings):
-    """Runtime settings for the Auction AI API."""
+    """
+    Application settings.
+    """
 
     model_config = SettingsConfigDict(
+
         env_file=".env",
+
         env_file_encoding="utf-8",
+
         case_sensitive=False,
+
         extra="ignore",
+
     )
 
-    PROJECT_NAME: str = "Auction AI"
-    API_V1_PREFIX: str = "/api/v1"
-    ENVIRONMENT: str = "local"
-    DEBUG: bool = True
+    # ======================================================
+    # Application
+    # ======================================================
 
-    BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    app_name: str = "Auction AI"
 
-    DATABASE_URL: str
-    DATABASE_ECHO: bool = False
+    app_version: str = "1.0.0"
+
+    app_description: str = (
+
+        "AI Powered Newspaper Auction Extraction"
+
+    )
+
+    environment: str = "development"
+
+    debug: bool = True
+
+    reload: bool = True
+
+    api_prefix: str = "/api/v1"
+
+    secret_key: str = Field(
+
+        default="auction-ai-secret",
+
+    )
+
+    # ======================================================
+    # Server
+    # ======================================================
+
+    host: str = "0.0.0.0"
+
+    port: int = 8000
+
+    workers: int = 1
+
+    timeout: int = 120
+
+
+    # ======================================================
+    # Logging
+    # ======================================================
+
+    log_level: str = "INFO"
+
+    log_format: str = (
+
+        "%(asctime)s | %(levelname)s | %(message)s"
+
+    )
+
+    log_file: str = "auction_ai.log"
+
+
+    # ======================================================
+    # API
+    # ======================================================
+
+    docs_url: str = "/docs"
+
+    redoc_url: str = "/redoc"
+
+    openapi_url: str = "/openapi.json"
+
+
+    # ======================================================
+    # Database
+    # ======================================================
+
+    mysql_host: str = Field(
+        default="localhost",
+    )
+
+    mysql_port: int = 3306
+
+    mysql_user: str = Field(
+        default="root",
+    )
+
+    mysql_password: str = Field(
+        default="root",
+    )
+
+    mysql_database: str = Field(
+        default="auction_ai",
+    )
+
+    database_echo: bool = False
+
+    database_pool_size: int = 10
+
+    database_max_overflow: int = 20
+
+    database_pool_timeout: int = 30
+
+
+    # ======================================================
+    # Gemini AI
+    # ======================================================
+
+    gemini_api_key: str = Field(
+        default="",
+    )
+
+    gemini_model: str = (
+        "gemini-flash-latest"
+    )
+
+    # ======================================================
+    # OpenAI AI
+    # ======================================================
+
+    openai_api_key: str = Field(
+        default="",
+    )
+
+    openai_model: str = "gpt-4.1-mini"
+
+    llm_provider: str = "openai"
+
+    # ======================================================
+    # Paddle OCR
+    # ======================================================
+
+    paddle_language: str = "en"
+
+    use_gpu: bool = False
+
+    use_angle_cls: bool = True
+
+    use_space_char: bool = True
+
     
+
+    ocr_confidence_threshold: float = 0.50
+
+    # ======================================================
+    # Upload
+    # ======================================================
+
+    max_upload_size_mb: int = 50
+
+    max_upload_size: int = (
+        50 * 1024 * 1024
+    )
+
+    allowed_extensions: tuple[str, ...] = (
+
+        ".jpg",
+
+        ".jpeg",
+
+        ".png",
+
+        ".bmp",
+
+        ".tif",
+        ".tiff",
+    )
+
+    save_original_image: bool = True
+
+    overwrite_existing: bool = False
+
+
+    # ======================================================
+    # Image Processing
+    # ======================================================
+
+    max_image_width: int = 3000
+
+    max_image_height: int = 3000
+
+    jpeg_quality: int = 95
+
+    image_dpi: int = 300
+
+    deskew_enabled: bool = True
+
+    denoise_enabled: bool = True
+
+    enhance_enabled: bool = True
+
+    # ======================================================
+    # Pipeline
+    # ======================================================
+
+    enable_layout_detection: bool = True
+
+    enable_auction_split: bool = True
+
+    enable_regex: bool = True
+
+    enable_llm: bool = True
+
+    enable_validator: bool = True
+
+    enable_database_save: bool = True
+
+    enable_confidence: bool = True
+
+
+    # ======================================================
+    # Confidence
+    # ======================================================
+
+    minimum_confidence: float = 0.75
+
+    regex_weight: float = 0.70
+
+    llm_weight: float = 0.30
+
+
+    # ======================================================
+    # Temporary Files
+    # ======================================================
+
+    delete_temp_files: bool = False
+
+    cleanup_after_processing: bool = False
+
+
+    # ======================================================
+    # Processing
+    # ======================================================
+
+    batch_size: int = 10
+
+    max_auction_notices: int = 100
+
+    processing_timeout: int = 600
+
+
+    # ======================================================
+    # Directories
+    # ======================================================
+
+    base_dir: Path = BASE_DIR
+
+    app_dir: Path = APP_DIR
+
+    upload_dir: Path = UPLOAD_DIR
+
+    original_dir: Path = UPLOAD_DIR / "original"
+
+    processed_dir: Path = UPLOAD_DIR / "processed"
+
+    split_dir: Path = UPLOAD_DIR / "split"
+
+    temp_dir: Path = TEMP_DIR
+
+    log_dir: Path = LOG_DIR
+
+    model_dir: Path = MODEL_DIR
+
+    # ======================================================
+    # CORS
+    # ======================================================
+
+    cors_origins: list[str] = [
+
+        "*",
+
+    ]
+
+    cors_methods: list[str] = [
+
+        "*",
+
+    ]
+
+    cors_headers: list[str] = [
+
+        "*",
+
+    ]
+
+    cors_credentials: bool = True
+
+
+    # ======================================================
+    # Database URL
+    # ======================================================
+
+    @property
+    def database_url(
+        self,
+    ) -> str:
+        """
+        SQLAlchemy database URL.
+        """
+
+        return (
+
+            "mysql+asyncmy://"
+
+            f"{self.mysql_user}:"
+
+            f"{self.mysql_password}@"
+
+            f"{self.mysql_host}:"
+
+            f"{self.mysql_port}/"
+
+            f"{self.mysql_database}"
+
+        )
     
-
-    GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    GROQ_BASE_URL: AnyHttpUrl = "https://api.groq.com/openai/v1"
-    GROQ_TIMEOUT_SECONDS: int = 60
-
-    OCR_LANG: str = "en"
-    OCR_USE_GPU: bool = False
-
-    BASE_DIR: Path = Field(default_factory=lambda: Path(__file__).resolve().parents[2])
-    UPLOAD_DIR: Path | None = None
-    PROCESSED_DIR: Path | None = None
-    WORD_OUTPUT_DIR: Path | None = None
-    EXCEL_OUTPUT_DIR: Path | None = None
-    TEMPLATE_DIR: Path | None = None
-
-    MAX_UPLOAD_SIZE_MB: int = 25
-
     @property
-    def cors_origins(self) -> list[str]:
-     """Return CORS origins parsed from comma-separated env text."""
-     return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]
+    def sync_database_url(
+        self,
+    ) -> str:
+        """
+        SQLAlchemy synchronous URL.
+        """
 
-    @property
-    def upload_dir(self) -> Path:
-        return self.UPLOAD_DIR or self.BASE_DIR / "app" / "uploads"
+        return (
 
-    @property
-    def processed_dir(self) -> Path:
-        return self.PROCESSED_DIR or self.BASE_DIR / "app" / "uploads" / "processed"
+            "mysql+pymysql://"
 
-    @property
-    def word_output_dir(self) -> Path:
-        return self.WORD_OUTPUT_DIR or self.BASE_DIR / "app" / "outputs" / "words"
+            f"{self.mysql_user}:"
 
-    @property
-    def excel_output_dir(self) -> Path:
-        return self.EXCEL_OUTPUT_DIR or self.BASE_DIR / "app" / "outputs" / "excels"
+            f"{self.mysql_password}@"
 
-    @property
-    def template_dir(self) -> Path:
-        return self.TEMPLATE_DIR or self.BASE_DIR / "app" / "templates"
+            f"{self.mysql_host}:"
 
-    @property
-    def max_upload_bytes(self) -> int:
-        return self.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+            f"{self.mysql_port}/"
+
+            f"{self.mysql_database}"
+
+        )
+    
+    # ======================================================
+    # Directory Creation
+    # ======================================================
+
+    def create_directories(
+        self,
+    ) -> None:
+        """
+        Create required directories.
+        """
+
+        directories = [
+
+            self.upload_dir,
+
+            self.original_dir,
+
+            self.processed_dir,
+
+            self.split_dir,
+
+            self.temp_dir,
+
+            self.log_dir,
+
+            self.model_dir,
+
+        ]
+
+        for directory in directories:
+
+            directory.mkdir(
+
+                parents=True,
+
+                exist_ok=True,
+
+            )
 
 
-@lru_cache(maxsize=1)
+    # ======================================================
+    # Settings Information
+    # ======================================================
+
+    def info(
+        self,
+    ) -> dict:
+        """
+        Return configuration summary.
+        """
+
+        return {
+
+            "application": self.app_name,
+
+            "version": self.app_version,
+
+            "environment": self.environment,
+
+            "database": self.mysql_database,
+
+            "gemini_model": self.gemini_model,
+
+            "openai_model": self.openai_model,
+
+            "llm_provider": self.llm_provider,
+
+            "debug": self.debug,
+
+        }
+    
+    # ======================================================
+    # Health Check
+    # ======================================================
+
+    def health_check(
+        self,
+    ) -> dict:
+        """
+        Configuration health.
+        """
+
+        return {
+
+            "status": "Healthy",
+
+            "environment": self.environment,
+
+            "database": self.mysql_database,
+
+            "upload_directory": str(
+
+                self.upload_dir,
+
+            ),
+
+            "log_directory": str(
+
+                self.log_dir,
+
+            ),
+
+        }
+    
+# ==========================================================
+# Settings Singleton
+# ==========================================================
+
+@lru_cache
 def get_settings() -> Settings:
-    """Return cached settings."""
-    return Settings()
+    """
+    Return cached settings instance.
+    """
+
+    settings = Settings()
+
+    settings.create_directories()
+
+    return settings
+
+
+# ==========================================================
+# Global Settings
+# ==========================================================
+
+settings = get_settings()

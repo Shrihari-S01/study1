@@ -1,46 +1,272 @@
-"""Upload repository."""
+"""
+Upload Repository.
+
+Handles all database operations related to uploads.
+"""
+
+from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logger import get_logger
 from app.models.upload import Upload
+
+logger = get_logger(__name__)
 
 
 class UploadRepository:
-    """Database operations for uploads."""
+    """
+    Repository for Upload table.
+    """
 
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+    ) -> None:
+
         self.db = db
 
-    async def create(self, upload: Upload) -> Upload:
-          self.db.add(upload)
+    # ==========================================================
+    # Create Upload
+    # ==========================================================
 
-          await self.db.flush()
-          await self.db.commit()
+    async def create(
+        self,
+        upload: Upload,
+    ) -> Upload:
+        """
+        Create a new upload.
+        """
 
-          await self.db.refresh(upload)
+        self.db.add(upload)
 
-          return upload
+        await self.db.commit()
 
-    
+        await self.db.refresh(upload)
 
-    async def get_by_id(self, upload_id: str) -> Upload | None:
-        result = await self.db.execute(select(Upload).where(Upload.id == upload_id))
+        logger.info(
+            "Upload created: %s",
+            upload.upload_number,
+        )
+
+        return upload
+
+    # ==========================================================
+    # Get Upload By ID
+    # ==========================================================
+
+    async def get_by_id(
+        self,
+        upload_id: str,
+    ) -> Upload | None:
+        """
+        Get upload by primary key.
+        """
+
+        result = await self.db.execute(
+
+            select(Upload).where(
+                Upload.id == upload_id,
+            )
+
+        )
+
         return result.scalar_one_or_none()
 
-    async def get_by_listing_id(self, listing_id: str) -> Upload | None:
-        result = await self.db.execute(select(Upload).where(Upload.listing_id == listing_id))
+    # ==========================================================
+    # Get Upload Number
+    # ==========================================================
+
+    async def get_by_upload_number(
+        self,
+        upload_number: str,
+    ) -> Upload | None:
+        """
+        Get upload using upload number.
+        """
+
+        result = await self.db.execute(
+
+            select(Upload).where(
+                Upload.upload_number == upload_number,
+            )
+
+        )
+
         return result.scalar_one_or_none()
 
-    async def update_status(self, upload: Upload, status: str, error_message: str | None = None) -> Upload:
+    # ==========================================================
+    # Get All Uploads
+    # ==========================================================
+
+    async def get_all(
+        self,
+        limit: int = 100,
+    ) -> list[Upload]:
+        """
+        Return all uploads.
+        """
+
+        result = await self.db.execute(
+
+            select(Upload)
+
+            .order_by(
+                Upload.created_at.desc(),
+            )
+
+            .limit(limit)
+
+        )
+
+        return list(result.scalars().all())
+
+    # ==========================================================
+    # Update Upload
+    # ==========================================================
+
+    async def update(
+        self,
+        upload: Upload,
+    ) -> Upload:
+        """
+        Save upload changes.
+        """
+
+        await self.db.commit()
+
+        await self.db.refresh(upload)
+
+        logger.info(
+            "Upload updated: %s",
+            upload.upload_number,
+        )
+
+        return upload
+
+    # ==========================================================
+    # Update Status
+    # ==========================================================
+
+    async def update_status(
+        self,
+        upload: Upload,
+        status: str,
+        error_message: str = "",
+    ) -> Upload:
+        """
+        Update upload status.
+        """
+
         upload.status = status
+
         upload.error_message = error_message
+
         await self.db.commit()
+
         await self.db.refresh(upload)
+
+        logger.info(
+            "Upload status updated: %s -> %s",
+            upload.upload_number,
+            status,
+        )
+
         return upload
 
-    async def save(self, upload: Upload) -> Upload:
+    # ==========================================================
+    # Update Statistics
+    # ==========================================================
+
+    async def update_statistics(
+        self,
+        upload: Upload,
+        total_notices: int,
+        successful_notices: int,
+        failed_notices: int,
+        processing_time: float,
+        confidence_score: float,
+    ) -> Upload:
+        """
+        Update processing statistics.
+        """
+
+        upload.total_notices = total_notices
+
+        upload.successful_notices = successful_notices
+
+        upload.failed_notices = failed_notices
+
+        upload.processing_time = processing_time
+
+        upload.confidence_score = confidence_score
+
         await self.db.commit()
+
         await self.db.refresh(upload)
+
+        logger.info(
+            "Statistics updated for %s",
+            upload.upload_number,
+        )
+
         return upload
 
+    # ==========================================================
+    # Delete Upload
+    # ==========================================================
+
+    async def delete(
+        self,
+        upload: Upload,
+    ) -> None:
+        """
+        Delete upload.
+        """
+
+        await self.db.delete(upload)
+
+        await self.db.commit()
+
+        logger.info(
+            "Upload deleted: %s",
+            upload.upload_number,
+        )
+
+    # ==========================================================
+    # Exists
+    # ==========================================================
+
+    async def exists(
+        self,
+        upload_id: str,
+    ) -> bool:
+        """
+        Check upload existence.
+        """
+
+        upload = await self.get_by_id(
+            upload_id,
+        )
+
+        return upload is not None
+
+    # ==========================================================
+    # Count Uploads
+    # ==========================================================
+
+    async def count(
+        self,
+    ) -> int:
+        """
+        Return total uploads.
+        """
+
+        result = await self.db.execute(
+
+            select(Upload)
+
+        )
+
+        return len(result.scalars().all())

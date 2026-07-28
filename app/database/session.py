@@ -1,14 +1,24 @@
-"""Database session dependency."""
+"""
+Database session dependency.
 
-from collections.abc import AsyncGenerator
+Provides an AsyncSession dependency for FastAPI.
+"""
 
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.connection import AsyncSessionLocal
+from app.database.connection import get_db
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Yield an async database session."""
-    async with AsyncSessionLocal() as session:
-        yield session
+# ==========================================================
+# Database Session Dependency
+# ==========================================================
 
+DbSession = Annotated[
+    AsyncSession,
+    Depends(get_db),
+]

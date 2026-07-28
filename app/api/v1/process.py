@@ -1,25 +1,168 @@
-"""Processing endpoints."""
+"""
+Processing API.
 
-from fastapi import APIRouter, status
+Auction processing endpoints.
+"""
 
-from app.api.deps import DbSession
-from app.schemas.auction import AuctionProcessResponse, AuctionRead
-from app.schemas.response import ApiResponse
-from app.services.pipeline import AuctionProcessingPipeline
+from __future__ import annotations
 
-router = APIRouter()
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+)
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database.session import get_db
+
+from app.services.pipeline import AuctionPipeline
+
+from app.schemas.response import APIResponse
+
+router = APIRouter(
+    prefix="/process",
+    tags=["Processing"],
+)
+
+# ==========================================================
+# Process Newspaper
+# ==========================================================
+
+@router.post(
+    "/",
+    response_model=APIResponse,
+    summary="Process Newspaper",
+)
+async def process_newspaper(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload and process newspaper.
+    """
+
+    try:
+
+        pipeline = AuctionPipeline(db)
+
+        result = await pipeline.run(
+            file,
+        )
+
+        return APIResponse(
+
+            success=True,
+
+            message="Processing completed successfully.",
+
+            data=result,
+
+        )
+
+    except Exception as exc:
+
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=str(exc),
+
+        )
+    
+# ==========================================================
+# Process Existing Image
+# ==========================================================
+
+@router.post(
+    "/image",
+    response_model=APIResponse,
+    summary="Process Existing Image",
+)
+async def process_image(
+    image_path: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Process an existing image file.
+    """
+
+    try:
+
+        pipeline = AuctionPipeline(
+            db,
+        )
+
+        result = await pipeline.process_image_path(
+            image_path,
+        )
+
+        return APIResponse(
+
+            success=True,
+
+            message="Image processed successfully.",
+
+            data=result,
+
+        )
+
+    except Exception as exc:
+
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=str(exc),
+
+        )
 
 
-@router.post("/{upload_id}", response_model=ApiResponse[AuctionProcessResponse], status_code=status.HTTP_202_ACCEPTED)
-async def process_upload(upload_id: str, db: DbSession) -> ApiResponse[AuctionProcessResponse]:
-    """Process an uploaded notice synchronously and generate outputs."""
-    auction = await AuctionProcessingPipeline(db).process_upload(upload_id)
-    payload = AuctionProcessResponse(
-        upload_id=upload_id,
-        auction=AuctionRead.model_validate(auction),
-        word_download_url=f"/api/v1/downloads/{auction.id}/word",
-        excel_download_url=f"/api/v1/downloads/{auction.id}/excel",
-    )
-    return ApiResponse(message="Auction notice processed successfully", data=payload)
+# ==========================================================
+# Batch Processing
+# ==========================================================
 
+@router.post(
+    "/batch",
+    response_model=APIResponse,
+    summary="Batch Processing",
+)
+async def batch_process(
+    files: list[UploadFile] = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Process multiple newspaper images.
+    """
 
+    try:
+
+        pipeline = AuctionPipeline(
+            db,
+        )
+
+        result = await pipeline.run_batch(
+            files,
+        )
+
+        return APIResponse(
+
+            success=True,
+
+            message="Batch processing completed.",
+
+            data=result,
+
+        )
+
+    except Exception as exc:
+
+        raise HTTPException(
+
+            status_code=500,
+
+            detail=str(exc),
+
+        )
