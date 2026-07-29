@@ -46,10 +46,6 @@ class FieldMapper:
 
         return {
 
-            "bank_name": "bank_name",
-
-            "branch_name": "branch_name",
-
             "borrower_name": "borrower_name",
 
             "co_borrower": "co_borrower",
@@ -106,7 +102,7 @@ class FieldMapper:
 
             "payment_type": "payment_type",
 
-            "are_you_interested": "are_you_interested",
+
 
             "institution_seller_name": "institution_seller_name",
 
@@ -168,9 +164,67 @@ class FieldMapper:
 
             "increment_price": "increment_price",
 
-            "dues_amount": "dues_amount",
+
 
             "assets_location": "assets_location",
+
+            "institution_seller": "institution_seller",
+
+            "auction_office": "auction_office",
+
+            "auction_department": "auction_department",
+
+            "digital_certificate": "digital_certificate",
+
+            "catalogue_view_date": "catalogue_view_date",
+
+            "asset_subcategory": "asset_subcategory",
+
+            "full_payment_balance": "full_payment_balance",
+
+            "delivery_of_material_taken": "delivery_of_material_taken",
+
+            "quantity": "quantity",
+
+            "units": "units",
+
+            "start_floor_price": "start_floor_price",
+
+            "vendor_name": "vendor_name",
+
+            "sum_of_carat_18": "sum_of_carat_18",
+
+            "sum_of_carat_19": "sum_of_carat_19",
+
+            "sum_of_carat_20": "sum_of_carat_20",
+
+            "sum_of_carat_21": "sum_of_carat_21",
+
+            "sum_of_carat_22": "sum_of_carat_22",
+
+            "sum_of_carat_23": "sum_of_carat_23",
+
+            "sum_of_carat_24": "sum_of_carat_24",
+
+            "sum_of_net_weight_total": "sum_of_net_weight_total",
+
+            "sum_of_gross_weight_total": "sum_of_gross_weight_total",
+
+            "year": "year",
+
+            "reg_no": "reg_no",
+
+            "repo_date": "repo_date",
+
+            "km_driven": "km_driven",
+
+            "rc": "rc",
+
+            "chassis_number": "chassis_number",
+
+            "yard_rent_percent": "yard_rent_percent",
+
+            "event_type": "event_type",
 
         }
 
@@ -279,13 +333,13 @@ class FieldMapper:
 
         return {
 
-            "bank": "bank_name",
+            "bank": "institution_seller",
 
-            "bankname": "bank_name",
+            "bankname": "institution_seller",
 
-            "branch": "branch_name",
+            "branch": "auction_department",
 
-            "branchname": "branch_name",
+            "branchname": "auction_department",
 
             "borrower": "borrower_name",
 
@@ -324,7 +378,14 @@ class FieldMapper:
             "contact": "contact_number",
 
             "officer": "authorized_officer",
-
+            "pre_bid_emd": "emd_amount",
+            "emd_price": "emd_amount",
+            "starting_price": "auction_start_price",
+            "start_floor_price": "auction_start_price",
+            "reserve_price": "auction_start_price",
+            "emd_account_number": "emd_account_no",
+            "registration_number": "reg_no",
+            "rc_number": "rc",
         }
     
 

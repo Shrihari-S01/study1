@@ -56,10 +56,6 @@ class AuctionParser:
 
         return [
 
-            "bank_name",
-
-            "branch_name",
-
             "borrower_name",
 
             "co_borrower",
@@ -127,7 +123,7 @@ class AuctionParser:
             "emd_ifsc",
             "payment_type",
             "digital_certificate",
-            "are_you_interested",
+
             "remarks",
             "auction_no",
             "asset_id",
@@ -136,8 +132,41 @@ class AuctionParser:
             "auction_description",
             "property_area",
             "increment_price",
-            "dues_amount",
+
             "assets_location",
+
+            "institution_seller",
+            "auction_office",
+            "auction_department",
+            "digital_certificate",
+            "catalogue_view_date",
+            "asset_subcategory",
+            "full_payment_balance",
+            "delivery_of_material_taken",
+            "quantity",
+            "units",
+            "start_floor_price",
+            "vendor_name",
+            "sum_of_carat_18",
+            "sum_of_carat_19",
+            "sum_of_carat_20",
+            "sum_of_carat_21",
+            "sum_of_carat_22",
+            "sum_of_carat_23",
+            "sum_of_carat_24",
+            "sum_of_net_weight_total",
+            "sum_of_gross_weight_total",
+            "year",
+            "reg_no",
+            "repo_date",
+            "km_driven",
+            "rc",
+            "chassis_number",
+            "yard_rent_percent",
+            "event_type",
+            "starting_price",
+            "pre_bid_emd",
+            "emd_price",
 
         ]
 
@@ -903,11 +932,30 @@ class AuctionParser:
             "Running direct Vision Extraction."
         )
 
+        import sys
+        def safe_print(text: str):
+            try:
+                sys.stdout.write(str(text).encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8", errors="replace") + "\n")
+            except Exception:
+                try:
+                    print(str(text).encode("ascii", errors="replace").decode("ascii"))
+                except Exception:
+                    pass
+
+        # Step 1: Log the raw OCR output
+        safe_print("\n=== STEP 1: RAW OCR OUTPUT ===")
+        safe_print(ocr_text or "[Empty OCR Text]")
+        safe_print("==============================\n")
+
         try:
             llm_result_str = self.llm.vision_completion(
                 base64_image,
                 ocr_text=ocr_text
             )
+            # Step 2: Log the exact JSON returned by the Vision LLM
+            safe_print("\n=== STEP 2: RAW JSON FROM VISION LLM ===")
+            safe_print(llm_result_str)
+            safe_print("========================================\n")
             llm_result = self.llm.parse_json(llm_result_str)
         except Exception as exc:
             logger.error("LLM vision extraction failed: %s.", exc)
@@ -951,6 +999,13 @@ class AuctionParser:
 
             # Map fields to DB attributes
             mapped_auc = self.map_fields(flat_auc)
+
+            # Step 3: Log the output after the Field Mapper
+            safe_print(f"\n=== STEP 3: OUTPUT AFTER FIELD MAPPER (Lot {idx+1}) ===")
+            for key, val in mapped_auc.items():
+                if val not in ("", None, 0, 0.0):
+                    safe_print(f"  {key} -> {val}")
+            safe_print("=====================================================\n")
 
             # Create flat representation of LLM results for confidence check
             llm_flat = {}
@@ -1063,7 +1118,7 @@ class AuctionParser:
 
         return [
 
-            "bank_name",
+            "institution_seller",
 
             "borrower_name",
 

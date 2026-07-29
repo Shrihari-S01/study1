@@ -137,9 +137,6 @@ class Validator:
             validated.get("bid_increment", "")
         )
 
-        validated["dues_amount"] = self.validate_dues_amount(
-            validated.get("dues_amount", "")
-        )
 
         validated["loan_account_number"] = self.validate_loan_account(
             validated.get("loan_account_number", "")
@@ -649,20 +646,6 @@ class Validator:
     ) -> str:
         """
         Validate bid increment.
-        """
-        return self.parse_financial_value(value)
-    
-
-    # ==========================================================
-    # Validate Dues Amount
-    # ==========================================================
-
-    def validate_dues_amount(
-        self,
-        value: str,
-    ) -> str:
-        """
-        Validate dues amount.
         """
         return self.parse_financial_value(value)
     

@@ -41,17 +41,20 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             
+            # Drop obsolete columns to prevent database default value errors on insert
+            for col_name in ["bank_name", "branch_name", "dues_amount", "are_you_interested"]:
+                try:
+                    await conn.execute(text(f"ALTER TABLE auctions DROP COLUMN {col_name}"))
+                    logger.info("Schema migration: Dropped obsolete column %s.", col_name)
+                except Exception as e:
+                    logger.debug("Obsolete column %s drop failed (might not exist): %s", col_name, e)
+
             # Alter/migrate table columns
-            from sqlalchemy import text
             for col_sql, col_name, action_desc in [
-                ("ALTER TABLE auctions ADD COLUMN bank_name VARCHAR(255) DEFAULT ''", "bank_name", "Added column"),
-                ("ALTER TABLE auctions ADD COLUMN branch_name VARCHAR(255) DEFAULT ''", "branch_name", "Added column"),
                 ("ALTER TABLE auctions ADD COLUMN possession_type VARCHAR(100) DEFAULT ''", "possession_type", "Added column"),
-                ("ALTER TABLE auctions ADD COLUMN dues_amount DECIMAL(15, 2) DEFAULT 0.00", "dues_amount", "Added column"),
                 ("ALTER TABLE auctions ADD COLUMN asset_id VARCHAR(100) DEFAULT ''", "asset_id", "Added column"),
                 ("ALTER TABLE auctions ADD COLUMN notice_auction_id VARCHAR(100) DEFAULT ''", "notice_auction_id", "Added column"),
                 ("ALTER TABLE auctions ADD COLUMN payment_type VARCHAR(50) DEFAULT ''", "payment_type", "Added column"),
-                ("ALTER TABLE auctions ADD COLUMN are_you_interested VARCHAR(10) DEFAULT ''", "are_you_interested", "Added column"),
                 ("ALTER TABLE auctions ADD COLUMN remarks TEXT DEFAULT ''", "remarks", "Added column"),
                 ("ALTER TABLE auctions MODIFY COLUMN borrower TEXT", "borrower", "Modified column type of")
             ]:

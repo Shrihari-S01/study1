@@ -178,13 +178,13 @@ class Auction(
     # Inspection Schedule
     # ==========================================================
 
-    inspection_from_date: Mapped[date | None] = mapped_column(
-        Date,
+    inspection_from_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 
-    inspection_to_date: Mapped[date | None] = mapped_column(
-        Date,
+    inspection_to_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
 
@@ -240,10 +240,7 @@ class Auction(
         default="",
     )
 
-    are_you_interested: Mapped[str] = mapped_column(
-        String(10),
-        default="",
-    )
+
 
     # ==========================================================
     # Remarks and Confidence Score
@@ -263,25 +260,14 @@ class Auction(
     # Added Columns for Mapped Details
     # ==========================================================
 
-    bank_name: Mapped[str] = mapped_column(
-        String(255),
-        default="",
-    )
 
-    branch_name: Mapped[str] = mapped_column(
-        String(255),
-        default="",
-    )
 
     possession_type: Mapped[str] = mapped_column(
         String(100),
         default="",
     )
 
-    dues_amount: Mapped[Decimal] = mapped_column(
-        Numeric(15, 2),
-        default=Decimal("0.00"),
-    )
+
 
     asset_id: Mapped[str] = mapped_column(
         String(100),
@@ -289,6 +275,151 @@ class Auction(
     )
 
     notice_auction_id: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    institution_seller: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+    )
+
+    auction_office: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+    )
+
+    auction_department: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+    )
+
+    digital_certificate: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    catalogue_view_date: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    asset_subcategory: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    full_payment_balance: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0.00"),
+    )
+
+    delivery_of_material_taken: Mapped[str] = mapped_column(
+        String(255),
+        default="",
+    )
+
+    quantity: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    units: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    start_floor_price: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0.00"),
+    )
+
+    vendor_name: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    sum_of_carat_18: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_19: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_20: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_21: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_22: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_23: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_carat_24: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    sum_of_net_weight_total: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    sum_of_gross_weight_total: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    year: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    reg_no: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    repo_date: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    km_driven: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    rc: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    chassis_number: Mapped[str] = mapped_column(
+        String(100),
+        default="",
+    )
+
+    yard_rent_percent: Mapped[str] = mapped_column(
+        String(50),
+        default="",
+    )
+
+    event_type: Mapped[str] = mapped_column(
         String(100),
         default="",
     )

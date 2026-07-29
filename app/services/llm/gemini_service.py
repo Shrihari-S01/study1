@@ -84,8 +84,37 @@ class GeminiService:
             "authorized_officer_name",
             "authorized_officer_number",
             "email",
-            "bank_name",
-            "branch_name",
+            # New fields
+            "institution_seller",
+            "auction_office",
+            "auction_department",
+            "digital_certificate",
+            "catalogue_view_date",
+            "asset_subcategory",
+            "full_payment_balance",
+            "delivery_of_material_taken",
+            "quantity",
+            "units",
+            "start_floor_price",
+            "sum_of_carat_18",
+            "sum_of_carat_19",
+            "sum_of_carat_20",
+            "sum_of_carat_21",
+            "sum_of_carat_22",
+            "sum_of_carat_23",
+            "sum_of_carat_24",
+            "sum_of_net_weight_total",
+            "sum_of_gross_weight_total",
+            "year",
+            "reg_no",
+            "repo_date",
+            "km_driven",
+            "rc",
+            "chassis_number",
+            "yard_rent_percent",
+            "pre_bid_emd",
+            "starting_price",
+            "emd_price",
             
             # Auction Mechanics and Dates
             "auction_type",
@@ -93,7 +122,6 @@ class GeminiService:
             "auction_live_status",
             "first_bid_acceptance_condition",
             "currency",
-            "catalogue_view_date",
             "auction_start_date_time",
             "auction_end_date_time",
             "submit_application",
@@ -110,8 +138,6 @@ class GeminiService:
             "payment_type",
 
             # Portal Specific Fields
-            "digital_certificate",
-            "are_you_interested",
             "remarks",
 
             # Auction specific fields
@@ -131,7 +157,7 @@ class GeminiService:
             "reserve_price",
             "emd_amount",
             "increment_price",
-            "dues_amount",
+
             "property_address",
             "district",
             "state",
@@ -156,8 +182,10 @@ class GeminiService:
                 "authorized_officer_name": "",
                 "authorized_officer_number": "",
                 "email": "",
-                "bank_name": "",
-                "branch_name": ""
+
+                "institution_seller": "",
+                "auction_office": "",
+                "auction_department": ""
             },
             "auction_mechanics_and_dates": {
                 "auction_type": "",
@@ -180,7 +208,7 @@ class GeminiService:
             },
             "portal_specific_fields": {
                 "digital_certificate": "",
-                "are_you_interested": "",
+
                 "remarks": ""
             },
             "auctions": [
@@ -201,7 +229,7 @@ class GeminiService:
                     "reserve_price": "",
                     "emd_amount": "",
                     "increment_price": "",
-                    "dues_amount": "",
+
                     "property_address": "",
                     "district": "",
                     "state": "",
@@ -210,7 +238,37 @@ class GeminiService:
                     "emd_account_no": "",
                     "emd_ifsc": "",
                     "authorized_officer_name": "",
-                    "authorized_officer_number": ""
+                    "authorized_officer_number": "",
+                    
+                    # Category-specific fields inside individual auction items
+                    "asset_subcategory": "",
+                    "full_payment_balance": "",
+                    "delivery_of_material_taken": "",
+                    "quantity": "",
+                    "units": "",
+                    "start_floor_price": "",
+                    "vendor_name": "",
+                    "sum_of_carat_18": "",
+                    "sum_of_carat_19": "",
+                    "sum_of_carat_20": "",
+                    "sum_of_carat_21": "",
+                    "sum_of_carat_22": "",
+                    "sum_of_carat_23": "",
+                    "sum_of_carat_24": "",
+                    "sum_of_net_weight_total": "",
+                    "sum_of_gross_weight_total": "",
+                    "year": "",
+                    "reg_no": "",
+                    "repo_date": "",
+                    "km_driven": "",
+                    "rc": "",
+                    "chassis_number": "",
+                    "yard_rent_percent": "",
+                    
+                    # Aliases for parser matching
+                    "starting_price": "",
+                    "pre_bid_emd": "",
+                    "emd_price": ""
                 }
             ]
         }
@@ -256,34 +314,42 @@ class GeminiService:
             "1. STRICT FILTERS FOR ABSENT DATA (CRITICAL): If a specific column, dropdown, or field defined in the JSON schema is missing, blank, not visible, or omitted from the source document, you MUST return an empty string \"\" for that field. You are strictly forbidden from providing mock data, placeholder variables, filler values, or template content.\n"
             "2. ENFORCED MATHEMATICAL SCALE MULTIPLIERS: Inspect all structural layout sections, column headers, footnotes, and margins for scale context keys (e.g., \"Amount in Lakhs\", \"(Rs. in Crore)\"). When a multiplier context key is verified, you must mathematically compute and expand the field value into a fully detailed, literal whole integer string (e.g., \"11.16\" Crores -> \"111600000\").\n"
             "3. FINANCIAL TEXT CHARACTER STRIPPING: Strip all financial string extractions (Reserve Price, EMD, Increment) of character noise, including commas, spaces, currency indicators (₹, Rs, Rs., INR), or trailing expressions (/-). Return exclusively pure numeric digit strings (e.g., \"₹ 92,77,200/-\" must be returned exactly as \"9277200\").\n"
-            "4. LITERAL GEOGRAPHIC PARSING: Capture the complete, exact boundary or location text inside the \"property_address\" field. From that text block, cleanly isolate the standalone 6-digit pin code, the target district, and the state into their dedicated individual fields.\n\n"
+            "4. COMPLETE LITERAL GEOGRAPHIC PARSING (CRITICAL): Capture the COMPLETE, exact, full multi-line location/address text inside \"assets_location\" (and \"property_address\"). Include all village, tehsil, road, landmark, city, district, pin code, and additional borrower/mortgagor/guarantor address details listed for the asset in the notice. Do NOT truncate, shorten, summarize, or split the location across OCR line breaks.\n\n"
             "### STRICT STANDARDIZATION & VALUE CONSTRAINTS:\n"
-            "1. asset_type: Must be strictly one of: \"movable\", \"immovable\", or \"scrap\". Do not use any other words.\n"
-            "2. asset_category: Must be strictly one of: \"scrap\", \"gold\", \"vehicle\", or \"property\".\n"
-            "   - If asset_type is \"movable\", asset_category must be one of \"scrap\", \"gold\", or \"vehicle\".\n"
+            "1. asset_type: Must be strictly one of: \"movable\" or \"immovable\". Do not use any other words.\n"
+            "2. asset_category: Must be strictly one of: \"scrap\", \"gold\", \"vehicle\", \"pearl\", or \"property\".\n"
+            "   - If asset_type is \"movable\", asset_category must be one of \"scrap\", \"gold\", \"vehicle\", or \"pearl\".\n"
             "   - If asset_type is \"immovable\", asset_category must be \"property\".\n"
-            "3. AUCTION TYPE: Extract the actual type of auction printed in the notice (such as \"E-Auction\", \"e-Auction\", \"online\", \"Public Auction\").\n"
-            "4. AUTO EXTENSION: Must be strictly \"yes\" or \"no\". If not mentioned in the notice, default to \"\".\n"
-            "5. AUTO EXTENSION MODE: Must be strictly \"infinite\" or \"custom\". If not mentioned, default to \"\".\n"
-            "6. AUCTION LIVE STATUS: Must be strictly \"live\", \"reschedule\", \"cancel\", or \"Not Active\". If not mentioned, default to \"\".\n"
-            "7. FIRST BID ACCEPTANCE CONDITION: Must be strictly \"yes\" or \"no\". If not mentioned, default to \"\".\n"
-            "8. PAYMENT TYPE: Extract the raw payment mode/type printed in the notice (such as \"RTGS/ NEFT\", \"DD\", \"Demand Draft\", \"Cheque\").\n"
+            "3. AUCTION TYPE: Must be strictly \"Forward\", \"Reverse\", or \"Tender\". If not found, return \"\".\n"
+            "4. AUTO EXTENSION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "5. AUTO EXTENSION MODE: Must be strictly \"Infinite\" or \"Custom\". If not mentioned, default to \"\".\n"
+            "6. AUCTION LIVE STATUS: Must be strictly \"Live\", \"Reschedule\", \"Not Active\", or \"Cancel\". If not mentioned, default to \"\".\n"
+            "7. FIRST BID ACCEPTANCE CONDITION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "8. PAYMENT TYPE: Extract the raw payment mode/type printed in the notice (e.g. \"RTGS/ NEFT\", \"DD\", \"Cheque\", \"Amount\", \"Transaction Value\"). For Property, choose strictly from \"Amount\" or \"Transaction Value\".\n"
             "9. ARE YOU INTERESTED?: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
-            "10. DATES & TIMES FORMATTING: Format all date and time fields (including \"auction_start_date_time\", \"auction_end_date_time\", \"submit_application\", \"inspection_schedule_from\", \"inspection_schedule_to\") strictly in standard format \"YYYY-MM-DD HH:MM:SS\" (e.g. \"2026-07-22 11:00:00\") or \"YYYY-MM-DD\" if no time is available. Carefully parse time ranges like \"11 AM to 1 PM\" into their respective start and end times (e.g. start: \"11:00:00\", end: \"13:00:00\"). If no time is printed in the notice, format as \"YYYY-MM-DD\" or use suffix \"00:00:00\" for datetime fields.\n"
-            "11. PER-AUCTION ACCOUNT DETAILS: Notice images typically list separate \"ACCOUNT DETAILS\" (Bank, Account No, IFSC Code) for each individual property/asset block. Extract these specifically inside each object in the \"auctions\" array (under \"emd_bank_name\", \"emd_account_no\", and \"emd_ifsc\").\n"
-            "12. AUCTION DESCRIPTION (CRITICAL): The \"auction_description\" MUST be the exact, verbatim property description paragraph/list. You must copy the text word-for-word, preserving all original survey numbers, patta numbers, boundary plots, boundaries (East, West, North, South), areas, layout names, and addresses exactly as they appear in the image for that specific item. Absolutely no summarization, truncation, consolidation, or omission of any boundary/area details is permitted. Ensure the entire paragraph/list is extracted in full. Note that the OCR helper text is jumbled horizontally across columns; you MUST read the columns and boundaries visually from the image to reconstruct the correct boundaries and keep them with their respective properties.\n"
-            "13. IMAGE VS OCR PRIORITY (CRITICAL): The provided OCR helper text is rough and contains noise, typos, and character misreads (e.g. misreading digits or names). You MUST prioritize the raw visual text in the image. Double-check all numbers, digits, areas, and phone numbers directly against the image canvas before populating fields. Do not swap or corrupt phone digits. DO NOT swap or rotate the values of reserve_price, emd_amount, and dues_amount. The reserve_price is the asset's reserve price (usually a mid-size number per item, e.g. 6,078,500), emd_amount is the Earnest Money Deposit (usually exactly 10% of the reserve_price, e.g. 6,07,850), and dues_amount is the total outstanding dues of the borrower (usually a much larger notice-wide figure, e.g. 10,29,23,772.92). If a single table row or section lists multiple reserve prices and EMDs for different properties (e.g. 3,05,04,500 and 4,24,69,000 written stacked or line-by-line), you MUST split them and extract each property as a separate auction object in the 'auctions' array with its respective correct reserve price and EMD. Never omit any reserve price listed in the table. Inspect column headers in the image visually to confirm which value belongs to which field.\n"
-            "14. EXACT MATCHING FOR OTHER FIELDS: For fields like \"auction_no\" (which is strictly the row serial number or item index like \"01\", \"02\", \"03\" or \"Lot 1\"), \"asset_id\" (which is the platform-assigned asset ID number like \"4118\"), \"auction_id\" (which is the platform-assigned auction ID number like \"3887\"), \"property_address\"/\"assets_location\", financial amounts, contact details, and bank names, extract the exact values as printed in the notice without alterations, summary, or additions. Do not map Auction ID or Asset ID into Auction No. If the bid increment price (\"increment_price\" / \"bid_increment\") is not explicitly printed in the notice, you MUST calculate a fallback value based on the reserve price: if the reserve price is under 10 Lakhs (1,000,000), default to \"10000\"; if between 10 Lakhs and 50 Lakhs (5,000,000), default to \"25000\"; if above 50 Lakhs, default to \"50000\".\n"
-            "15. INSPECTION SCHEDULE DATES: Visually scan the entire notice page (especially the lower sections, footnotes, terms and conditions, or small text paragraphs at the bottom) for terms like 'inspection', 'inspected', 'inspecting', 'date of inspection', or 'inspection of assets'. If an inspection date or range is printed anywhere in the notice (e.g. 'can be inspected on 24.07.2026' or 'inspection date: 2026-07-24'), you MUST extract the start date into 'inspection_schedule_from' and end date into 'inspection_schedule_to' (format YYYY-MM-DD). If only a single date is printed, assign it to both 'inspection_schedule_from' and 'inspection_schedule_to'. If there is absolutely no inspection date mentioned in the notice, you MUST look for the issue date / notice date printed at the very bottom left/right of the notice (usually next to 'Place', e.g., 'Date: 22.06.2026') and use that date as the fallback for both 'inspection_schedule_from' and 'inspection_schedule_to'. Never leave them blank.\n"
-            "16. DUES AMOUNT: Extract the outstanding dues liability amount printed on the notice (e.g. from labels like \"Total Dues\", \"Total Liabilities\", \"Total Dues Excluding Interest\", \"Dues Outstanding\"). Clean it of character noise (commas, spaces, Rs, \u20b9) and return it as a numeric digit string (e.g. \"Rs. 79,49,434.06/-\" must be returned as \"7949434.06\").\n"
-            "17. POSSESSION TYPE: Extract the possession status/type of the property (such as \"PHYSICAL\", \"SYMBOLIC\", \"CONSTRUCTIVE\").\n"
-            "18. INDIAN NUMERICAL GROUPING: Indian notices format numbers using a Lakh/Crore commas structure (e.g. \"4,93,50,000\"). This represents 8 digits \"49350000\" (4.935 Crores). You MUST be extremely careful: strip all formatting commas before parsing digits to prevent digit length multiplication. Never extract \"4,93,50,000\" as \"493500000\" (which is 9 digits, a 10x error). Grouping commas are format only; count digits visually.\n"
-            "19. PER-AUCTION CONTACT AND OFFICER DETAILS: Document tables often contain branch-specific or row-specific contact numbers, mobile numbers, or names (e.g. \"Mob: [Mobile Number]\" or \"Phone: [Landline Number]\"). You MUST extract these specific numbers under the \"authorized_officer_number\" field inside the corresponding auction object in the \"auctions\" list. If an officer name or branch contact person name is also listed for that specific row/asset, extract it under \"authorized_officer_name\" inside the corresponding auction object. Only if no row-specific/branch contact detail is present, should they fall back to the notice-wide/zonal contact details. Extract all mobile/phone numbers found in the notice (such as at the bottom of the notice) and format them as a slash-separated string in \"authorized_officer_number\" if no specific officer number is listed.\n"
-            "20. TAMIL AND MULTILINGUAL NOTICE TRANSLATION & TRANSLITERATION: Some notices are written partially or completely in Tamil. You MUST visually read the Tamil text, translate all semantic values (such as asset type, categories, dates, and descriptions) into English, and transliterate proper nouns (such as borrower/guarantor names, branch names, and city/village names) into English character spelling. All output fields in the JSON payload must be populated strictly in English.\n\n"
-            "### PIPELINE COMPLETION COMPLIANCE:\n"
-            "- Output exclusively RAW, VALID JSON text matching the schema format below.\n"
-            "- DO NOT wrap the output payload inside markdown fences or code blocks (Never use ```json or ```).\n"
-            "- Absolutely no conversational text, execution summaries, notes, or natural language introductions are permitted. The output stream must start exactly with '{' and end with '}'."
+            "10. DATES & TIMES FORMATTING: Format all date and time fields (including \"auction_start_date_time\", \"auction_end_date_time\", \"submit_application\", \"inspection_schedule_from\", \"inspection_schedule_to\", \"repo_date\", \"catalogue_view_date\") strictly in standard format \"DD-MM-YYYY HH:MM\" or \"DD-MM-YYYY\" if no time is available.\n"
+            "11. PER-AUCTION ACCOUNT DETAILS: Notice images typically list separate \"ACCOUNT DETAILS\" (Bank Name, Account No, IFSC Code) for EMD deposit. Extract EMD Bank Name independently from the Bank Name listed in the account details section (e.g. \"Canara Bank\"). Do NOT derive or leave EMD Bank Name empty; extract it independently from the notice under \"emd_bank_name\". Extract account number under \"emd_account_no\" and IFSC under \"emd_ifsc\".\n"
+            "12. SEMANTIC DATE CLASSIFICATION (CRITICAL - NO HARDCODING):\n"
+            "    - Every date in the document must be classified based strictly on surrounding labels, headings, and semantic meaning rather than page order or fixed document layout:\n"
+            "    - Inspection Schedule (\"inspection_schedule_from\", \"inspection_schedule_to\"): Populate ONLY if the document explicitly describes an inspection schedule associated with semantic context like 'Inspection', 'Inspection Schedule', 'Property Inspection', 'Inspection Date', 'Inspection From/To', 'Asset Inspection', 'Site Visit', or 'Material Inspection'. If no explicit inspection details are present, you MUST return empty string \"\". NEVER infer or copy inspection dates from Notice Date, Publication Date, Advertisement Date, Signing Date, or Auction/EMD dates.\n"
+            "    - Catalogue View Date (\"catalogue_view_date\"): Classify dates associated with document publication, notice date, advertisement date, document issue, signing date, or 'Place & Date' near the Authorized Officer signature block as \"catalogue_view_date\". Format as \"DD-MM-YYYY\". Do NOT reuse this date for inspection fields.\n"
+            "    - Auction Start & End Dates (\"auction_start_date_time\", \"auction_end_date_time\"): Map dates explicitly labeled as auction date, e-auction schedule, or auction start/end time.\n"
+            "    - Submit Application / EMD Deadline (\"submit_application\"): Map dates explicitly labeled as EMD submission deadline, last date of receipt of EMD, or application submission deadline.\n"
+            "    - ZERO-DUPLICATION & DISAMBIGUATION: Assign each extracted date to only ONE business category field based on its highest semantic confidence. Never duplicate one extracted date across unrelated fields."
+            "13. QUANTITY AND UNITS EXTRACTION (CRITICAL):\n"
+            "    - When a notice specifies quantity (e.g. 'Qty - 01 Set', 'Qty - 01 Lot'), extract numeric quantity (e.g. \"1\") into \"quantity\" and unit string (e.g. \"Set\" or \"Lot\") into \"units\". If representing the entire lot, extract \"quantity\": \"1\", \"units\": \"Set\" (or \"Lot\").\n"
+            "14. EXACT MATCHING FOR CATEGORY METADATA FIELDS:\n"
+            "    - \"institution_seller\": Notice-wide institution or seller bank name (replaces notice-wide bank name).\n"
+            "    - \"auction_office\": Notice-wide branch or auction office name.\n"
+            "    - \"auction_department\": Notice-wide department or branch dept name.\n"
+            "    - \"digital_certificate\": Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "    - \"catalogue_view_date\": Store the notice publication date/release date printed lower down/at the bottom of the page. Do NOT confuse it with the auction date. Format as \"DD-MM-YYYY\".\n"
+            "    - \"vendor_name\": Choose strictly from: \"ABI\", \"AS\", \"TESTEMP\", \"BINUKUMAR\", \"FSTEMP\", \"TEST EMPS\", \"TEST EMP\".\n"
+            "    - \"asset_subcategory\": Choose strictly from: \"Compressors\", \"E-Waste\", \"Used and Unused Machineries\", \"Wood Scrap\", \"Car\", \"LKI\" (for scrap), or \"Car\" (for vehicle).\n"
+            "    - \"sum_of_carat_18\" to \"sum_of_carat_24\": Extract the exact carat weight value or flag (e.g. \"Y\" or \"-\") for gold.\n"
+            "    - \"sum_of_net_weight_total\", \"sum_of_gross_weight_total\": Extract total gold weight details.\n"
+            "    - \"year\", \"reg_no\", \"repo_date\", \"km_driven\", \"rc\", \"chassis_number\", \"yard_rent_percent\": Extract for vehicles.\n"
+            "    - \"event_type\": Choose strictly from: \"Insurance Salvage\", \"REPO\", \"Sarfaesi\", \"DRT\", \"NCLT\", \"Consumer/Seller\", \"SARFAESI ACT\", \"kjno\", \"binnukutty\", \"qwerty\", \"bbbb\"."
         )
 
         prompt = (
@@ -413,8 +479,32 @@ class GeminiService:
         logger.info("Calling Gemini API for text-based extraction.")
 
         system_instruction = (
-            "You are a highly defensive, zero-tolerance data-extraction text pipeline specialized in structural document intelligence. "
-            "You process Indian bank auction notices. Your primary directive is 100% data fidelity. You must never invent, assume, approximate, or hallucinate any data point.\n\n"
+            "You are a highly defensive, zero-tolerance data-extraction text pipeline specialized in structural document intelligence. You process Indian bank auction notices. Your primary directive is 100% data fidelity. You must never invent, assume, approximate, or hallucinate any data point.\n\n"
+            "### STRICT STANDARDIZATION & VALUE CONSTRAINTS:\n"
+            "1. asset_type: Must be strictly one of: \"movable\" or \"immovable\". Do not use any other words.\n"
+            "2. asset_category: Must be strictly one of: \"scrap\", \"gold\", \"vehicle\", \"pearl\", or \"property\".\n"
+            "   - If asset_type is \"movable\", asset_category must be one of \"scrap\", \"gold\", \"vehicle\", or \"pearl\".\n"
+            "   - If asset_type is \"immovable\", asset_category must be \"property\".\n"
+            "3. AUCTION TYPE: Must be strictly \"Forward\", \"Reverse\", or \"Tender\". If not found, return \"\".\n"
+            "4. AUTO EXTENSION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "5. AUTO EXTENSION MODE: Must be strictly \"Infinite\" or \"Custom\". If not mentioned, default to \"\".\n"
+            "6. AUCTION LIVE STATUS: Must be strictly \"Live\", \"Reschedule\", \"Not Active\", or \"Cancel\". If not mentioned, default to \"\".\n"
+            "7. FIRST BID ACCEPTANCE CONDITION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "8. PAYMENT TYPE: Extract the raw payment mode/type printed in the notice (e.g. \"RTGS/ NEFT\", \"DD\", \"Cheque\", \"Amount\", \"Transaction Value\"). For Property, choose strictly from \"Amount\" or \"Transaction Value\".\n"
+            "9. ARE YOU INTERESTED?: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "10. DATES & TIMES FORMATTING: Format all date and time fields (including \"auction_start_date_time\", \"auction_end_date_time\", \"submit_application\", \"inspection_schedule_from\", \"inspection_schedule_to\", \"repo_date\", \"catalogue_view_date\") strictly in standard format \"DD-MM-YYYY HH:MM\" or \"DD-MM-YYYY\" if no time is available.\n"
+            "11. EXACT MATCHING FOR CATEGORY METADATA FIELDS:\n"
+            "    - \"institution_seller\": Notice-wide institution or seller bank name (replaces notice-wide bank name).\n"
+            "    - \"auction_office\": Notice-wide branch or auction office name.\n"
+            "    - \"auction_department\": Notice-wide department or branch dept name.\n"
+            "    - \"digital_certificate\": Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
+            "    - \"catalogue_view_date\": Store the notice publication date/release date printed lower down/at the bottom of the page. Do NOT confuse it with the auction date. Format as \"DD-MM-YYYY\".\n"
+            "    - \"vendor_name\": Choose strictly from: \"ABI\", \"AS\", \"TESTEMP\", \"BINUKUMAR\", \"FSTEMP\", \"TEST EMPS\", \"TEST EMP\".\n"
+            "    - \"asset_subcategory\": Choose strictly from: \"Compressors\", \"E-Waste\", \"Used and Unused Machineries\", \"Wood Scrap\", \"Car\", \"LKI\" (for scrap), or \"Car\" (for vehicle).\n"
+            "    - \"sum_of_carat_18\" to \"sum_of_carat_24\": Extract the exact carat weight value or flag (e.g. \"Y\" or \"-\") for gold.\n"
+            "    - \"sum_of_net_weight_total\", \"sum_of_gross_weight_total\": Extract total gold weight details.\n"
+            "    - \"year\", \"reg_no\", \"repo_date\", \"km_driven\", \"rc\", \"chassis_number\", \"yard_rent_percent\": Extract for vehicles.\n"
+            "    - \"event_type\": Choose strictly from: \"Insurance Salvage\", \"REPO\", \"Sarfaesi\", \"DRT\", \"NCLT\", \"Consumer/Seller\", \"SARFAESI ACT\", \"kjno\", \"binnukutty\", \"qwerty\", \"bbbb\".\n\n"
             "Output exclusively RAW, VALID JSON text matching the schema format below.\n"
             "DO NOT wrap the output payload inside markdown fences or code blocks. The output stream must start exactly with '{' and end with '}'."
         )

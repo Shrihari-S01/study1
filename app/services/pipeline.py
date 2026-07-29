@@ -461,7 +461,8 @@ class AuctionPipeline:
                 "success": True,
                 "image": image_path,
                 "ocr_text": ocr_text,
-                "record": parsed.get("record", {}),
+                "record": parsed.get("fields", []),
+                "raw_llm": parsed.get("llm", {}),
                 "validation": parsed.get("validation", {}),
                 "confidence": parsed.get("confidence", {}),
                 "statistics": parsed.get("statistics", {}),
@@ -739,7 +740,93 @@ class AuctionPipeline:
             "extraction_results": extraction["results"],
 
         }
-    
+
+    # ==========================================================
+    # Process Image Path
+    # ==========================================================
+
+    async def process_image_path(
+        self,
+        image_path: str,
+    ) -> dict:
+        """
+        Process an already-existing image file.
+        """
+        logger.info(
+            "Processing existing image file: %s",
+            image_path,
+        )
+
+        import os
+        from pathlib import Path
+        from app.models.upload import Upload
+        from app.core.constants import UPLOAD_UPLOADED
+
+        filename = os.path.basename(image_path)
+        extension = Path(filename).suffix.lower() or ".png"
+        file_size = 0
+        if os.path.exists(image_path):
+            file_size = os.path.getsize(image_path)
+            
+        upload = Upload(
+            upload_number=self.upload_service.generate_upload_number(),
+            original_filename=filename,
+            stored_filename=filename,
+            file_extension=extension,
+            content_type="image/png",
+            file_size=file_size,
+            original_file_path=image_path,
+            processed_file_path="",
+            split_folder_path="",
+            status=UPLOAD_UPLOADED,
+            total_notices=0,
+            successful_notices=0,
+            failed_notices=0,
+            processing_time=0.0,
+            confidence_score=0.0,
+            error_message="",
+        )
+        
+        upload = await self.database.upload_repository.create(upload)
+
+        images = await self.prepare_images(
+            upload.original_file_path,
+            upload.upload_number,
+        )
+
+        extraction = await self.process_ocr_stage(
+            images,
+            original_file_path=upload.original_file_path,
+        )
+
+        database = await self.save_results(
+            upload,
+            extraction["results"],
+        )
+
+        # Update upload status to COMPLETED
+        await self.upload_service.repository.update_status(
+            upload=upload,
+            status="COMPLETED",
+        )
+        await self.upload_service.repository.update_statistics(
+            upload=upload,
+            total_notices=len(images),
+            successful_notices=len(database["records"]),
+            failed_notices=len(images) - len(database["records"]),
+            processing_time=0.0,
+            confidence_score=0.99
+        )
+
+        result = {
+            "upload": database["upload"],
+            "results": database["records"],
+            "summary": extraction["summary"],
+            "extraction_results": extraction["results"],
+        }
+        
+        return self.build_response(result)
+
     # ==========================================================
     # Build Response
     # ==========================================================
@@ -751,45 +838,8 @@ class AuctionPipeline:
         """
         Build API response.
         """
-        records_dict = []
-        from decimal import Decimal
-        from datetime import date, datetime
-
-        for record in result["results"]:
-            if hasattr(record, "__table__"):
-                record_dict = {c.key: getattr(record, c.key) for c in record.__table__.columns}
-                for k, v in record_dict.items():
-                    if isinstance(v, Decimal):
-                        record_dict[k] = float(v)
-                    elif isinstance(v, (datetime, date)):
-                        record_dict[k] = v.isoformat()
-                # Expose aliases for HTML frontend compatibility
-                record_dict["reserve_price"] = record_dict.get("auction_start_price")
-                record_dict["auction_id"] = record_dict.get("notice_auction_id")
-                records_dict.append(record_dict)
-            else:
-                records_dict.append(record)
-
-        error_msg = None
-        if len(records_dict) == 0 and "extraction_results" in result:
-            for res in result["extraction_results"]:
-                if not res.get("success") and res.get("message"):
-                    error_msg = res["message"]
-                    break
-
-        response = {
-            "success": len(records_dict) > 0 or result["summary"]["total_notices"] == 0,
-            "upload_id": result["upload"].id,
-            "upload_number": result["upload"].upload_number,
-            "total_records": len(records_dict),
-            "records": records_dict,
-            "summary": result["summary"],
-        }
-
-        if error_msg:
-            response["message"] = error_msg
-
-        return response
+        from app.core.schemas.auction_schemas import build_pipeline_response
+        return build_pipeline_response(result)
     
     # ==========================================================
     # Run Pipeline

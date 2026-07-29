@@ -136,21 +136,27 @@ class DatabaseService:
                 db_data["assets_location"] = auction["property_address"]
 
             # Explicitly parse and clean decimal fields to avoid DB crash
-            for field in ["auction_start_price", "emd_amount", "increment_price", "dues_amount"]:
-                val = db_data.get(field) or auction.get(field)
-                if field == "auction_start_price" and not val:
-                    val = auction.get("reserve_price")
-                elif field == "increment_price" and not val:
-                    val = auction.get("bid_increment")
-                
+            for field in ["auction_start_price", "emd_amount", "increment_price", "full_payment_balance", "start_floor_price"]:
+                val = db_data.get(field)
+                if val in (None, ""):
+                    val = auction.get(field)
+
+                if val in (None, ""):
+                    if field == "auction_start_price":
+                        val = auction.get("starting_price") or auction.get("start_floor_price") or auction.get("reserve_price")
+                    elif field == "emd_amount":
+                        val = auction.get("pre_bid_emd") or auction.get("emd_price")
+                    elif field == "increment_price":
+                        val = auction.get("bid_increment")
+
                 if val not in (None, ""):
                     try:
                         clean_val = str(val).replace(",", "").replace("₹", "").replace("Rs.", "").strip()
                         db_data[field] = Decimal(clean_val)
                     except Exception:
-                        db_data[field] = Decimal("0.00")
+                        db_data[field] = None
                 else:
-                    db_data[field] = Decimal("0.00")
+                    db_data[field] = None
 
             if not db_data.get("currency") and auction.get("currency"):
                 db_data["currency"] = auction["currency"]
@@ -164,14 +170,21 @@ class DatabaseService:
             if not db_data.get("submit_application") and auction.get("submit_application"):
                 db_data["submit_application"] = auction["submit_application"]
 
+            # Map institution seller and office department fallbacks
+            if not db_data.get("institution_seller"):
+                db_data["institution_seller"] = auction.get("institution_seller") or auction.get("institution_seller_name") or ""
+
+            if not db_data.get("auction_office"):
+                db_data["auction_office"] = auction.get("auction_office") or auction.get("auction_office_department") or ""
+
+            if not db_data.get("auction_department"):
+                db_data["auction_department"] = auction.get("auction_department") or auction.get("auction_office_department") or ""
+
             if not db_data.get("emd_bank_name") and auction.get("emd_bank_name"):
                 db_data["emd_bank_name"] = auction["emd_bank_name"]
 
-            if not db_data.get("emd_bank_name") and auction.get("institution_seller_name"):
-                db_data["emd_bank_name"] = auction["institution_seller_name"]
-
-            if not db_data.get("emd_bank_name") and auction.get("bank_name"):
-                db_data["emd_bank_name"] = auction["bank_name"]
+            if not db_data.get("emd_bank_name"):
+                db_data["emd_bank_name"] = ""
 
             if not db_data.get("emd_account_no") and auction.get("emd_account_no"):
                 db_data["emd_account_no"] = auction["emd_account_no"]
@@ -194,26 +207,13 @@ class DatabaseService:
             if not db_data.get("payment_type") and auction.get("payment_type"):
                 db_data["payment_type"] = auction["payment_type"]
 
-            if not db_data.get("are_you_interested") and auction.get("are_you_interested"):
-                db_data["are_you_interested"] = auction["are_you_interested"]
+
 
             if not db_data.get("remarks") and auction.get("remarks"):
                 db_data["remarks"] = auction["remarks"]
 
-            if not db_data.get("bank_name") and auction.get("bank_name"):
-                db_data["bank_name"] = auction["bank_name"]
-
-            if not db_data.get("branch_name") and auction.get("branch_name"):
-                db_data["branch_name"] = auction["branch_name"]
-
             if not db_data.get("possession_type") and auction.get("possession_type"):
                 db_data["possession_type"] = auction["possession_type"]
-
-            if not db_data.get("dues_amount") and auction.get("dues_amount"):
-                try:
-                    db_data["dues_amount"] = Decimal(str(auction["dues_amount"]).replace(",", ""))
-                except Exception:
-                    db_data["dues_amount"] = Decimal("0.00")
 
             if not db_data.get("asset_id") and auction.get("asset_id"):
                 db_data["asset_id"] = auction["asset_id"]
@@ -268,35 +268,29 @@ class DatabaseService:
                             except Exception:
                                 continue
 
-            if not db_data.get("inspection_from_date"):
-                date_str = auction.get("inspection_schedule_from") or auction.get("inspection_date")
-                if date_str:
-                    try:
-                        import dateutil.parser
-                        db_data["inspection_from_date"] = dateutil.parser.parse(str(date_str)).date()
-                    except Exception:
-                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
-                            try:
-                                clean_date = str(date_str).split()[0]
-                                db_data["inspection_from_date"] = datetime.strptime(clean_date, fmt).date()
-                                break
-                            except Exception:
-                                continue
+            # Parse catalogue_view_date from auction dict / notice publication date
+            raw_cat = auction.get("catalogue_view_date") or auction.get("notice_date") or auction.get("publication_date")
+            if raw_cat and str(raw_cat).strip() not in ("", "None", "null"):
+                db_data["catalogue_view_date"] = str(raw_cat).strip()
 
-            if not db_data.get("inspection_to_date"):
-                date_str = auction.get("inspection_schedule_to")
-                if date_str:
+            # Check if explicit inspection schedule was provided in the raw notice
+            raw_insp = auction.get("inspection_schedule_from") or auction.get("inspection_schedule_from_date") or auction.get("inspection_from_date")
+            
+            # Explicit inspection guard: reset inspection_from_date and inspection_to_date to None
+            db_data["inspection_from_date"] = None
+            db_data["inspection_to_date"] = None
+
+            # Only parse inspection date if document contains explicit inspection keywords and date is distinct from notice date
+            raw_txt = str(auction).lower()
+            has_insp_kw = any(kw in raw_txt for kw in ["inspection", "site visit", "visit date", "material inspection"])
+
+            if has_insp_kw and raw_insp and str(raw_insp).strip() not in ("", "None", "null"):
+                if not raw_cat or str(raw_insp).strip() != str(raw_cat).strip():
                     try:
                         import dateutil.parser
-                        db_data["inspection_to_date"] = dateutil.parser.parse(str(date_str)).date()
+                        db_data["inspection_from_date"] = dateutil.parser.parse(str(raw_insp))
                     except Exception:
-                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
-                            try:
-                                clean_date = str(date_str).split()[0]
-                                db_data["inspection_to_date"] = datetime.strptime(clean_date, fmt).date()
-                                break
-                            except Exception:
-                                continue
+                        pass
 
             # Timeline logical date alignment
             # 1. Force year to 2026 for all auction timeline dates (to prevent matching 2020 or other years)
@@ -316,8 +310,8 @@ class DatabaseService:
                 db_data["auction_end_datetime"] = force_auction_year(db_data["auction_end_datetime"])
             if db_data.get("inspection_from_date"):
                 db_data["inspection_from_date"] = force_auction_year(db_data["inspection_from_date"])
-            if db_data.get("inspection_to_date"):
-                db_data["inspection_to_date"] = force_auction_year(db_data["inspection_to_date"])
+            if not db_data.get("catalogue_view_date") and auction.get("catalogue_view_date"):
+                db_data["catalogue_view_date"] = auction["catalogue_view_date"]
 
             # Fallback and default alignments for Canara Bank and common fields
             if db_data.get("emd_bank_name") and "CANARA" in str(db_data.get("emd_bank_name")).upper():

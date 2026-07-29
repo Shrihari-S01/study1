@@ -392,6 +392,29 @@
             min-height: 80px;
         }
 
+        select {
+            cursor: pointer;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='%239ca3af' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 1.25rem;
+            padding-right: 2.5rem;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+        }
+
+        select option {
+            background-color: #111827;
+            color: #f3f4f6;
+            padding: 0.5rem;
+        }
+
+        select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         /* Footer */
         footer {
             text-align: center;
@@ -500,155 +523,7 @@
 
                             <form id="auctionForm">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="asset_type">Asset Type</label>
-                                <input type="text" id="asset_type" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="asset_category">Asset Category</label>
-                                <input type="text" id="asset_category" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auction_no">Auction No</label>
-                                <input type="text" id="auction_no" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="asset_id">Asset ID</label>
-                                <input type="text" id="asset_id" readonly>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="auction_id">Auction ID</label>
-                                <input type="text" id="auction_id" readonly>
-                            </div>
-                            <div class="form-group col-span-3">
-                                <label for="borrower">Borrower</label>
-                                <input type="text" id="borrower" readonly>
-                            </div>
-
-                            <div class="form-group col-span-2">
-                                <label for="bank_name">Bank Name</label>
-                                <input type="text" id="bank_name" readonly>
-                            </div>
-                            <div class="form-group col-span-2">
-                                <label for="branch_name">Branch Name</label>
-                                <input type="text" id="branch_name" readonly>
-                            </div>
-
-                            <div class="form-group col-span-2">
-                                <label for="auction_description">Auction Description</label>
-                                <textarea id="auction_description" readonly></textarea>
-                            </div>
-                            <div class="form-group col-span-2">
-                                <label for="assets_location">Assets Location</label>
-                                <textarea id="assets_location" readonly></textarea>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="auction_type">Auction Type</label>
-                                <input type="text" id="auction_type" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="possession_type">Possession Type</label>
-                                <input type="text" id="possession_type" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="reserve_price">Reserve Price (INR)</label>
-                                <input type="text" id="reserve_price" style="font-weight: 700; color: var(--accent-primary);" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="emd_amount">EMD Price (INR)</label>
-                                <input type="text" id="emd_amount" readonly>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="increment_price">Increment Price (INR)</label>
-                                <input type="text" id="increment_price" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="dues_amount">Dues Amount (INR)</label>
-                                <input type="text" id="dues_amount" style="font-weight: 600; color: var(--warning-color);" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="currency">Currency</label>
-                                <input type="text" id="currency" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auction_start_datetime">Auction Date & Time</label>
-                                <input type="text" id="auction_start_datetime" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auction_end_datetime">Auction End Date & Time</label>
-                                <input type="text" id="auction_end_datetime" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auto_extension">Auto Extension</label>
-                                <input type="text" id="auto_extension" readonly>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="auto_extension_mode">Auto Extension Mode</label>
-                                <input type="text" id="auto_extension_mode" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auction_extend_time">Auction Extend Time (Mins)</label>
-                                <input type="text" id="auction_extend_time" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="auction_live_status">Auction Live Status</label>
-                                <input type="text" id="auction_live_status" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="first_bid_acceptance_condition">First Bid Acceptance Condition</label>
-                                <input type="text" id="first_bid_acceptance_condition" readonly>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="inspection_from_date">Inspection Schedule From Date</label>
-                                <input type="text" id="inspection_from_date" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="inspection_to_date">Inspection Schedule To Date</label>
-                                <input type="text" id="inspection_to_date" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="submit_application">Submit Application</label>
-                                <input type="text" id="submit_application" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="emd_bank_name">EMD Bank Name</label>
-                                <input type="text" id="emd_bank_name" readonly>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="emd_account_no">EMD Account No</label>
-                                <input type="text" id="emd_account_no" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="emd_ifsc">EMD IFSC</label>
-                                <input type="text" id="emd_ifsc" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="authorized_officer_name">Authorized Officer Name</label>
-                                <input type="text" id="authorized_officer_name" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="authorized_officer_number">Authorized Officer Number</label>
-                                <input type="text" id="authorized_officer_number" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="payment_type">Payment Type</label>
-                                <input type="text" id="payment_type" readonly>
-                            </div>
-                            <div class="form-group">
-                                <label for="are_you_interested">Are you Interested?</label>
-                                <input type="text" id="are_you_interested" readonly>
-                            </div>
-
-                            <div class="form-group col-span-4">
-                                <label for="remarks">Remarks</label>
-                                <textarea id="remarks" readonly></textarea>
-                            </div>
+                            <!-- Dynamically populated based on category schema -->
                         </div>
                     </form>
                 </div>
@@ -671,6 +546,128 @@
 
         let extractedAuctions = [];
         let currentMode = 'single'; // 'single' or 'document'
+
+        // Metadata schemas and definitions for category-based rendering
+        const fieldMeta = {
+            asset_type: { label: "Asset Type", span: 1, type: "text" },
+            asset_category: { label: "Asset Category", span: 1, type: "text" },
+            auction_no: { label: "Auction No", span: 1, type: "text" },
+            borrower: { label: "Borrower", span: 3, type: "text" },
+            auction_description: { label: "Auction Description", span: 2, type: "textarea" },
+            assets_location: { label: "Assets Location", span: 2, type: "textarea" },
+            auction_type: { label: "Auction Type", span: 1, type: "text" },
+            possession_type: { label: "Possession Type", span: 1, type: "text" },
+            starting_price: { label: "Starting Price (INR)", span: 1, type: "text", format: "price", highlight: "primary" },
+            reserve_price: { label: "Reserve Price (INR)", span: 1, type: "text", format: "price", highlight: "primary" },
+            pre_bid_emd: { label: "Pre-Bid EMD (INR)", span: 1, type: "text", format: "price" },
+            emd_price: { label: "EMD Price (INR)", span: 1, type: "text", format: "price" },
+            increment_price: { label: "Increment Price (INR)", span: 1, type: "text", format: "price" },
+            currency: { label: "Currency", span: 1, type: "text" },
+            auction_date_time: { label: "Auction Date & Time", span: 1, type: "text" },
+            auction_end_date_time: { label: "Auction End Date & Time", span: 1, type: "text" },
+            auto_extension: { label: "Auto Extension", span: 1, type: "text" },
+            auto_extension_mode: { label: "Auto Extension Mode", span: 1, type: "text" },
+            auction_extend_time: { label: "Auction Extend Time (Mins)", span: 1, type: "text" },
+            auction_live_status: { label: "Auction Live Status", span: 1, type: "text" },
+            first_bid_acceptance_condition: { label: "First Bid Acceptance Condition", span: 1, type: "text" },
+            inspection_schedule_from_date: { label: "Inspection Schedule From Date", span: 1, type: "text" },
+            inspection_schedule_to_date: { label: "Inspection Schedule To Date", span: 1, type: "text" },
+            submit_application: { label: "Submit Application", span: 1, type: "text" },
+            emd_bank_name: { label: "EMD Bank Name", span: 1, type: "text" },
+            emd_account_number: { label: "EMD Account Number", span: 1, type: "text" },
+            emd_ifsc: { label: "EMD IFSC", span: 1, type: "text" },
+            auction_office: { label: "Auction Office", span: 1, type: "text" },
+            institution_seller: { label: "Institution/Seller", span: 2, type: "text" },
+            auction_department: { label: "Auction Department", span: 2, type: "text" },
+            digital_certificate: { label: "Digital Certificate", span: 1, type: "text" },
+            catalogue_view_date: { label: "Catalogue View Date", span: 1, type: "text" },
+            asset_subcategory: { label: "Asset Subcategory", span: 1, type: "text" },
+            full_payment_balance: { label: "Full Payment Balance (INR)", span: 1, type: "text", format: "price" },
+            remarks: { label: "Remarks", span: 4, type: "textarea" },
+            authorized_officer_name: { label: "Authorized Officer Name", span: 1, type: "text" },
+            authorized_officer_number: { label: "Authorized Officer Number", span: 1, type: "text" },
+            vendor_name: { label: "Vendor Name", span: 1, type: "text" },
+            payment_type: { label: "Payment Type", span: 1, type: "text" },
+            delivery_of_material_taken: { label: "Delivery of Material Taken", span: 1, type: "text" },
+            quantity: { label: "Quantity", span: 1, type: "text" },
+            units: { label: "Units", span: 1, type: "text" },
+            start_floor_price: { label: "Start Floor Price (INR)", span: 1, type: "text", format: "price" },
+            sum_of_carat_18: { label: "Sum of Carat 18", span: 1, type: "text" },
+            sum_of_carat_19: { label: "Sum of Carat 19", span: 1, type: "text" },
+            sum_of_carat_20: { label: "Sum of Carat 20", span: 1, type: "text" },
+            sum_of_carat_21: { label: "Sum of Carat 21", span: 1, type: "text" },
+            sum_of_carat_22: { label: "Sum of Carat 22", span: 1, type: "text" },
+            sum_of_carat_23: { label: "Sum of Carat 23", span: 1, type: "text" },
+            sum_of_carat_24: { label: "Sum of Carat 24", span: 1, type: "text" },
+            sum_of_net_weight_total: { label: "Sum of Net Weight Total", span: 1, type: "text" },
+            sum_of_gross_weight_total: { label: "Sum of Gross Weight Total", span: 1, type: "text" },
+            year: { label: "Year", span: 1, type: "text" },
+            registration_number: { label: "Registration Number", span: 1, type: "text" },
+            repo_date: { label: "Repo Date", span: 1, type: "text" },
+            km_driven: { label: "KM Driven", span: 1, type: "text" },
+            rc_number: { label: "RC Number", span: 1, type: "text" },
+            chassis_number: { label: "Chassis Number", span: 1, type: "text" },
+            yard_rent_percent: { label: "Yard Rent Percent", span: 1, type: "text" },
+            event_type: { label: "Event Type", span: 1, type: "text" }
+        };
+
+        const categorySchemas = {
+            scrap: [
+                "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
+                "assets_location", "starting_price", "pre_bid_emd", "increment_price", "currency",
+                "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
+                "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
+                "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
+                "emd_bank_name", "emd_account_number", "emd_ifsc", "auction_office", "institution_seller",
+                "auction_department", "digital_certificate", "catalogue_view_date", "asset_subcategory",
+                "full_payment_balance", "delivery_of_material_taken", "quantity", "units",
+                "start_floor_price", "remarks", "authorized_officer_name", "authorized_officer_number",
+                "vendor_name", "payment_type"
+            ],
+            gold: [
+                "asset_type", "asset_category", "auction_no", "auction_description", "assets_location",
+                "starting_price", "emd_price", "increment_price", "currency", "auction_date_time",
+                "auction_end_date_time", "auto_extension", "auto_extension_mode", "auction_extend_time",
+                "auction_live_status", "first_bid_acceptance_condition", "inspection_schedule_from_date",
+                "inspection_schedule_to_date", "submit_application", "emd_bank_name", "emd_account_number",
+                "emd_ifsc", "borrower", "asset_subcategory", "institution_seller", "sum_of_carat_18",
+                "sum_of_carat_19", "sum_of_carat_20", "sum_of_carat_21", "sum_of_carat_22", "sum_of_carat_23",
+                "sum_of_carat_24", "sum_of_net_weight_total", "sum_of_gross_weight_total", "catalogue_view_date",
+                "quantity", "units", "start_floor_price", "remarks", "authorized_officer_name",
+                "authorized_officer_number", "vendor_name", "payment_type"
+            ],
+            vehicle: [
+                "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
+                "assets_location", "starting_price", "emd_price", "increment_price", "currency",
+                "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
+                "auction_extend_time", "auction_live_status", "inspection_schedule_from_date",
+                "inspection_schedule_to_date", "submit_application", "emd_bank_name", "emd_account_number",
+                "emd_ifsc", "borrower", "institution_seller", "asset_subcategory", "year",
+                "registration_number", "repo_date", "km_driven", "rc_number", "chassis_number",
+                "yard_rent_percent", "full_payment_balance", "remarks", "authorized_officer_name",
+                "authorized_officer_number", "vendor_name", "payment_type"
+            ],
+            pearl: [
+                "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
+                "assets_location", "starting_price", "emd_price", "increment_price", "currency",
+                "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
+                "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
+                "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
+                "emd_bank_name", "emd_account_number", "emd_ifsc", "remarks", "authorized_officer_name",
+                "authorized_officer_number", "vendor_name", "payment_type"
+            ],
+            property: [
+                "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
+                "assets_location", "reserve_price", "emd_price", "increment_price", "currency",
+                "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
+                "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
+                "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
+                "emd_bank_name", "emd_account_number", "emd_ifsc", "borrower", "institution_seller",
+                "auction_office", "auction_department", "event_type", "digital_certificate",
+                "catalogue_view_date", "remarks", "authorized_officer_name", "authorized_officer_number",
+                "vendor_name", "payment_type"
+            ]
+        };
 
         const btnSingle = document.getElementById('btnSingle');
         const btnDocument = document.getElementById('btnDocument');
@@ -812,14 +809,28 @@
                 card.className = `asset-item-card ${index === 0 ? 'active' : ''}`;
                 card.onclick = () => selectAsset(index);
 
-                // Safe currency display
-                const rawPrice = auction.auction_start_price || '0.00';
-                const formattedPrice = Math.round(Number(rawPrice));
+                // Display price based on Asset Category
+                const category = (auction.asset_category || "").toLowerCase();
+                let priceLabel = "Starting Price";
+                let rawPrice = auction.starting_price;
+                if (category === "property") {
+                    priceLabel = "Reserve Price";
+                    rawPrice = auction.reserve_price;
+                }
+
+                let priceText = "Not Specified";
+                if (rawPrice !== undefined && rawPrice !== null && rawPrice !== "") {
+                    priceText = `₹${Math.round(Number(rawPrice)).toLocaleString('en-IN')}`;
+                }
+
+                // Normalize asset category to consistent uppercase (SCRAP, PROPERTY, etc.)
+                const normalizedCategory = category.toUpperCase() || "UNSPECIFIED";
+                const assetTypeDisplay = auction.asset_type || "Asset";
 
                 card.innerHTML = `
                     <div class="card-number">Asset #${index + 1}</div>
-                    <div class="card-name">${auction.asset_type || 'Unspecified Asset'}</div>
-                    <div class="card-price">Reserve Price: ₹${formattedPrice}</div>
+                    <div class="card-name">${normalizedCategory} - ${assetTypeDisplay}</div>
+                    <div class="card-price">${priceLabel}: ${priceText}</div>
                 `;
                 assetList.appendChild(card);
             });
@@ -827,6 +838,19 @@
             // Auto-select first asset
             selectAsset(0);
         }
+
+        const dropdownOptions = {
+            auction_type: ["Forward", "Reverse", "Tender"],
+            auto_extension: ["Yes", "No"],
+            auto_extension_mode: ["Infinite", "Custom"],
+            auction_live_status: ["Live", "Reschedule", "Not Active", "Cancel"],
+            first_bid_acceptance_condition: ["Yes", "No"],
+            asset_subcategory: ["Compressors", "E-Waste", "Used and Unused Machineries", "Wood Scrap", "Car", "LKI"],
+            digital_certificate: ["Yes", "No"],
+            vendor_name: ["ABI", "AS", "TESTEMP", "BINUKUMAR", "FSTEMP", "TEST EMPS", "TEST EMP"],
+            payment_type: ["Amount", "Transaction Value", "Percentage"],
+            event_type: ["Insurance Salvage", "REPO", "Sarfaesi", "DRT", "NCLT", "Consumer/Seller", "SARFAESI ACT", "kjno", "binnukutty", "qwerty", "bbbb"]
+        };
 
         function selectAsset(index) {
             // Update active states
@@ -842,39 +866,91 @@
             const data = extractedAuctions[index];
             if (!data) return;
 
-            // Update form fields
-            const fields = [
-                'bank_name', 'branch_name', 'possession_type', 'dues_amount',
-                'asset_type', 'asset_category', 'auction_no', 'borrower', 
-                'asset_id', 'auction_id',
-                'auction_description', 'assets_location', 'auction_type', 
-                'reserve_price', 'emd_amount', 'increment_price', 'currency', 
-                'auction_start_datetime', 'auction_end_datetime', 'auto_extension', 
-                'auto_extension_mode', 'auction_extend_time', 'auction_live_status', 
-                'first_bid_acceptance_condition', 'inspection_from_date', 'inspection_to_date', 
-                'submit_application', 'emd_bank_name', 'emd_account_no', 'emd_ifsc', 
-                'authorized_officer_name', 'authorized_officer_number', 'payment_type', 
-                'are_you_interested', 'remarks'
-            ];
-
-            fields.forEach(field => {
-                const el = document.getElementById(field);
-                if (el) {
-                    let val = data[field];
+            const category = (data.asset_category || "property").toLowerCase();
+            const schema = categorySchemas[category] || categorySchemas["property"];
+            
+            const formGrid = document.querySelector('.form-grid');
+            if (formGrid) {
+                formGrid.innerHTML = '';
+                
+                schema.forEach(fieldKey => {
+                    const meta = fieldMeta[fieldKey];
+                    if (!meta) return;
                     
-                    // Formatting specific columns
-                    if (field === 'reserve_price' || field === 'emd_amount' || field === 'increment_price' || field === 'dues_amount') {
-                        if (val) {
-                            val = Math.round(Number(val));
+                    const groupDiv = document.createElement('div');
+                    let spanClass = '';
+                    if (meta.span > 1) {
+                        spanClass = ` col-span-${meta.span}`;
+                    }
+                    groupDiv.className = `form-group${spanClass}`;
+                    
+                    const label = document.createElement('label');
+                    label.setAttribute('for', fieldKey);
+                    label.innerText = meta.label;
+                    
+                    let input;
+                    if (meta.type === 'textarea') {
+                        input = document.createElement('textarea');
+                    } else if (dropdownOptions[fieldKey]) {
+                        input = document.createElement('select');
+                        
+                        const defaultOpt = document.createElement('option');
+                        defaultOpt.value = "";
+                        defaultOpt.innerText = "-- Select --";
+                        input.appendChild(defaultOpt);
+                        
+                        dropdownOptions[fieldKey].forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt;
+                            option.innerText = opt;
+                            input.appendChild(option);
+                        });
+                    } else {
+                        input = document.createElement('input');
+                        input.setAttribute('type', 'text');
+                    }
+                    input.setAttribute('id', fieldKey);
+                    
+                    // Bind value
+                    let val = data[fieldKey];
+                    
+                    // Date formatting logic (dd-mm-yyyy date-only, strip 00:00)
+                    const dateOnlyFields = [
+                        'catalogue_view_date', 'repo_date', 'demand_notice_date',
+                        'sale_notice_date', 'inspection_schedule_from_date', 'inspection_schedule_to_date'
+                    ];
+                    if (dateOnlyFields.includes(fieldKey)) {
+                        if (val && typeof val === 'string' && val.endsWith(' 00:00')) {
+                            val = val.substring(0, val.length - 6);
                         }
-                    } else if (field === 'auto_extension') {
-                        val = val ? 'Yes' : 'No';
                     }
 
-                    el.value = val !== undefined && val !== null ? val : '';
-                    el.title = el.value; // Display full text tooltips on hover to prevent truncation
-                }
-            });
+                    if (meta.format === 'price') {
+                        if (val !== undefined && val !== null && val !== "") {
+                            val = Math.round(Number(val));
+                        } else {
+                            val = "";
+                        }
+                    } else if (fieldKey === 'auto_extension') {
+                        if (val === true || val === 'Yes') val = 'Yes';
+                        else if (val === false || val === 'No') val = 'No';
+                    } else if (fieldKey === 'asset_category') {
+                        if (val) val = String(val).toUpperCase();
+                    }
+                    
+                    input.value = val !== undefined && val !== null ? val : '';
+                    input.title = input.value;
+                    
+                    if (meta.highlight === 'primary') {
+                        input.style.fontWeight = '700';
+                        input.style.color = 'var(--accent-primary)';
+                    }
+                    
+                    groupDiv.appendChild(label);
+                    groupDiv.appendChild(input);
+                    formGrid.appendChild(groupDiv);
+                });
+            }
 
             // Set confidence value (with dynamic fallback logic)
             const score = data.confidence_score ? (data.confidence_score * 100).toFixed(1) : '92.4';

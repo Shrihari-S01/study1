@@ -205,41 +205,5 @@ class DocumentPipeline:
         """
         Build API response in the exact same format as AuctionPipeline.
         """
-        records_dict = []
-        
-        for record in result["results"]:
-            if hasattr(record, "__table__"):
-                record_dict = {c.key: getattr(record, c.key) for c in record.__table__.columns}
-                for k, v in record_dict.items():
-                    if isinstance(v, Decimal):
-                        record_dict[k] = float(v)
-                    elif isinstance(v, (datetime, date)):
-                        record_dict[k] = v.isoformat()
-                
-                # Expose aliases for HTML frontend compatibility
-                record_dict["reserve_price"] = record_dict.get("auction_start_price")
-                record_dict["auction_id"] = record_dict.get("notice_auction_id")
-                records_dict.append(record_dict)
-            else:
-                records_dict.append(record)
-
-        error_msg = None
-        if len(records_dict) == 0 and "extraction_results" in result:
-            for res in result["extraction_results"]:
-                if not res.get("success") and res.get("message"):
-                    error_msg = res["message"]
-                    break
-
-        response = {
-            "success": len(records_dict) > 0 or result["summary"]["total_notices"] == 0,
-            "upload_id": result["upload"].id,
-            "upload_number": result["upload"].upload_number,
-            "total_records": len(records_dict),
-            "records": records_dict,
-            "summary": result["summary"],
-        }
-
-        if error_msg:
-            response["message"] = error_msg
-
-        return response
+        from app.core.schemas.auction_schemas import build_pipeline_response
+        return build_pipeline_response(result)

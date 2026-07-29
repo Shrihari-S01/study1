@@ -302,7 +302,7 @@ class ConfidenceCalculator:
         score = 0.99
 
         # Check if the field is numeric and the extracted value is purely numeric
-        numeric_fields = ["reserve_price", "emd_amount", "increment_price", "dues_amount", "bid_increment"]
+        numeric_fields = ["reserve_price", "emd_amount", "increment_price", "bid_increment"]
         if field in numeric_fields:
             cleaned_val = str(value).replace(",", "").strip()
             if cleaned_val.isdigit() or (cleaned_val.replace(".", "", 1).isdigit() and cleaned_val.count(".") <= 1):

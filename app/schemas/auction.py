@@ -170,15 +170,129 @@ class AuctionBase(BaseModel):
         default="",
     )
 
-    are_you_interested: str = Field(
-        default="",
-    )
+
 
     # ======================================================
     # Additional Information
     # ======================================================
 
     remarks: str = Field(
+        default="",
+    )
+
+    institution_seller: str = Field(
+        default="",
+    )
+
+    auction_office: str = Field(
+        default="",
+    )
+
+    auction_department: str = Field(
+        default="",
+    )
+
+    digital_certificate: str = Field(
+        default="",
+    )
+
+    catalogue_view_date: str = Field(
+        default="",
+    )
+
+    asset_subcategory: str = Field(
+        default="",
+    )
+
+    full_payment_balance: Decimal = Field(
+        default=Decimal("0.00"),
+    )
+
+    delivery_of_material_taken: str = Field(
+        default="",
+    )
+
+    quantity: str = Field(
+        default="",
+    )
+
+    units: str = Field(
+        default="",
+    )
+
+    start_floor_price: Decimal = Field(
+        default=Decimal("0.00"),
+    )
+
+    vendor_name: str = Field(
+        default="",
+    )
+
+    sum_of_carat_18: str = Field(
+        default="",
+    )
+
+    sum_of_carat_19: str = Field(
+        default="",
+    )
+
+    sum_of_carat_20: str = Field(
+        default="",
+    )
+
+    sum_of_carat_21: str = Field(
+        default="",
+    )
+
+    sum_of_carat_22: str = Field(
+        default="",
+    )
+
+    sum_of_carat_23: str = Field(
+        default="",
+    )
+
+    sum_of_carat_24: str = Field(
+        default="",
+    )
+
+    sum_of_net_weight_total: str = Field(
+        default="",
+    )
+
+    sum_of_gross_weight_total: str = Field(
+        default="",
+    )
+
+    year: str = Field(
+        default="",
+    )
+
+    reg_no: str = Field(
+        default="",
+    )
+
+    repo_date: str = Field(
+        default="",
+    )
+
+    km_driven: str = Field(
+        default="",
+    )
+
+    rc: str = Field(
+        default="",
+    )
+
+    chassis_number: str = Field(
+        default="",
+    )
+
+    yard_rent_percent: str = Field(
+        default="",
+    )
+
+    event_type: str = Field(
         default="",
     )
 
@@ -272,11 +386,69 @@ class AuctionUpdate(BaseModel):
 
     payment_type: Optional[str] = None
 
-    are_you_interested: Optional[str] = None
+
 
     remarks: Optional[str] = None
 
     confidence_score: Optional[float] = None
+
+    institution_seller: Optional[str] = None
+
+    auction_office: Optional[str] = None
+
+    auction_department: Optional[str] = None
+
+    digital_certificate: Optional[str] = None
+
+    catalogue_view_date: Optional[str] = None
+
+    asset_subcategory: Optional[str] = None
+
+    full_payment_balance: Optional[Decimal] = None
+
+    delivery_of_material_taken: Optional[str] = None
+
+    quantity: Optional[str] = None
+
+    units: Optional[str] = None
+
+    start_floor_price: Optional[Decimal] = None
+
+    vendor_name: Optional[str] = None
+
+    sum_of_carat_18: Optional[str] = None
+
+    sum_of_carat_19: Optional[str] = None
+
+    sum_of_carat_20: Optional[str] = None
+
+    sum_of_carat_21: Optional[str] = None
+
+    sum_of_carat_22: Optional[str] = None
+
+    sum_of_carat_23: Optional[str] = None
+
+    sum_of_carat_24: Optional[str] = None
+
+    sum_of_net_weight_total: Optional[str] = None
+
+    sum_of_gross_weight_total: Optional[str] = None
+
+    year: Optional[str] = None
+
+    reg_no: Optional[str] = None
+
+    repo_date: Optional[str] = None
+
+    km_driven: Optional[str] = None
+
+    rc: Optional[str] = None
+
+    chassis_number: Optional[str] = None
+
+    yard_rent_percent: Optional[str] = None
+
+    event_type: Optional[str] = None
 
 # ==========================================================
 # Response Schema
