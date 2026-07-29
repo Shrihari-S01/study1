@@ -250,7 +250,14 @@ class LLMService:
         """
         Perform a targeted second pass LLM call focusing strictly on missing mandatory fields.
         """
-        return self.gemini.targeted_reextraction(base64_image, missing_fields, ocr_text=ocr_text)
+    def extract_pdf_catalogue(
+        self,
+        pdf_text: str,
+    ) -> dict:
+        """
+        Extract structured data from PDF auction catalogue text (Pipeline B).
+        """
+        return self.gemini.extract_pdf_catalogue(pdf_text)
 
     # ==========================================================
     # Text-Based Extraction

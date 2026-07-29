@@ -78,91 +78,53 @@ class DocumentPipeline:
             if not os.path.exists(pdf_path):
                 raise FileNotFoundError(f"Uploaded PDF not found at {pdf_path}")
 
-            # 2. Render PDF pages as images
-            logger.info("Rendering PDF pages to images.")
+            # 2. Extract digital text directly from PDF preserving page numbers and table layout
+            logger.info("Extracting native digital text directly from PDF document.")
             doc = fitz.open(pdf_path)
-            page_images = []
+            full_pdf_text_parts = []
             
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                pix = page.get_pixmap(dpi=150)
-                img_data = pix.tobytes("png")
-                img = Image.open(io.BytesIO(img_data))
-                page_images.append(img)
+                # Extract page text preserving structural layout / tables
+                page_text = page.get_text("text")
+                full_pdf_text_parts.append(f"--- PAGE {page_num + 1} ---\n{page_text}")
             doc.close()
 
-            logger.info(f"Total pages rendered: {len(page_images)}")
+            full_pdf_text = "\n\n".join(full_pdf_text_parts)
+            logger.info(f"Extracted digital text from {len(full_pdf_text_parts)} pages.")
 
-            # 3. Chunk pages into groups of 4 and stitch them
-            stitched_images_paths = []
-            upload_dir = os.path.dirname(pdf_path)
-            
-            for i in range(0, len(page_images), 4):
-                chunk = page_images[i:i+4]
-                stitched_img = self.stitch_pages(chunk)
-                
-                # Save stitched image physically
-                stitched_filename = f"{upload.upload_number}_stitched_{i//4}.png"
-                stitched_path = os.path.join(upload_dir, stitched_filename)
-                stitched_img.save(stitched_path, "PNG")
-                stitched_images_paths.append(stitched_path)
-
-            logger.info(f"Generated {len(stitched_images_paths)} stitched grid images.")
-
-            # 4. Process each stitched image via Vision LLM
+            # 3. Process via Pipeline B (Section-aware PDF Catalogue Extraction)
             saved_records = []
             extraction_results = []
             total_notices = 0
 
-            for idx, img_path in enumerate(stitched_images_paths):
-                logger.info(f"Processing stitched grid {idx + 1}/{len(stitched_images_paths)}")
-                
-                # Base64 encode the stitched image
-                with open(img_path, "rb") as image_file:
-                    base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+            try:
+                parsed = self.parser.parse_pdf_catalogue(full_pdf_text)
+                records = parsed.get("fields", [])
+                if isinstance(records, dict):
+                    records = [records]
+                elif not isinstance(records, list):
+                    records = []
 
-                ocr_text = ""
-                try:
-                    logger.info(f"Running OCR on stitched image {img_path}")
-                    ocr_text = self.ocr.extract_text(img_path)
-                except Exception:
-                    logger.exception("OCR failed on stitched image, proceeding without it.")
+                # Save each lot record to database
+                for record in records:
+                    record["upload_id"] = upload.id
+                    saved = await self.database.save_auction(record)
+                    saved_records.append(saved)
+                    total_notices += 1
 
-                try:
-                    parsed = self.parser.process_vision(
-                        base64_image,
-                        ocr_text=ocr_text,
-                        global_ocr_text=""
-                    )
-                    
-                    success = True
-                    records = parsed.get("record", {})
-                    
-                    # Convert to list if it is a single dict
-                    if isinstance(records, dict):
-                        records = [records]
-                    elif not isinstance(records, list):
-                        records = []
-
-                    # Save each record to database
-                    for record in records:
-                        record["upload_id"] = upload.id
-                        saved = await self.database.save_auction(record)
-                        saved_records.append(saved)
-                        total_notices += 1
-
-                    extraction_results.append({
-                        "success": True,
-                        "image": img_path,
-                        "message": "Processed successfully."
-                    })
-                except Exception as exc:
-                    logger.exception(f"Failed to process stitched image {img_path}")
-                    extraction_results.append({
-                        "success": False,
-                        "image": img_path,
-                        "message": str(exc)
-                    })
+                extraction_results.append({
+                    "success": True,
+                    "document": pdf_path,
+                    "message": "Processed PDF catalogue successfully via Pipeline B."
+                })
+            except Exception as exc:
+                logger.exception(f"Failed to process PDF document {pdf_path}")
+                extraction_results.append({
+                    "success": False,
+                    "document": pdf_path,
+                    "message": str(exc)
+                })
 
             # 5. Build consolidated response
             summary = {

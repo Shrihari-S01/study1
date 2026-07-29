@@ -309,15 +309,27 @@ class GeminiService:
             "2. GLOBAL AUCTION METADATA CLASSIFICATION & PROPAGATION:\n"
             "   - Extract document-level metadata (E-Auction Website, Global Inspection Schedule, Last Date of Submission, Auction Start/End Date & Time, Public Notice Date/Catalogue View Date, Payment Instructions, Terms & Conditions) once into top-level JSON fields (such as 'event_and_institution_details', 'auction_mechanics_and_dates', 'emd_and_payment_details').\n"
             "   - Shared values (like Global Catalogue View Date or Global Auction Date) apply to all auction records unless a specific auction lot defines its own local value.\n"
-            "3. CATALOGUE VIEW DATE LOGIC:\n"
-            "   - Catalogue View Date represents the publication/issue date of the notice (NOT the auction date).\n"
-            "   - Priority: 1. Explicit Catalogue View Date, 2. Public Notice Date, 3. Notice Date, 4. Date near Authorized Officer signature, 5. Footer 'Date' (e.g. 'Date: 30.06.2026' -> '30-06-2026').\n"
-            "   - NEVER use Auction Start/End Date, Last Submission Date, Inspection Date, Demand Notice Date, or Possession Date for Catalogue View Date.\n"
-            "4. INSPECTION SCHEDULE LOGIC:\n"
-            "   - Populate inspection dates ('inspection_schedule_from', 'inspection_schedule_to') ONLY from explicit inspection sections (e.g. 'Date & Time of Inspection of Property Documents', 'Inspection of the Property', 'Site Visit', 'Viewing Date').\n"
-            "   - If no explicit inspection section exists in the document, return empty string \"\" for inspection fields.\n"
+            "3. CATALOGUE VIEW DATE LOGIC (IMAGE NOTICES):\n"
+            "   - Priority order:\n"
+            "     1. Explicit label 'Catalogue View Date'.\n"
+            "     2. 'DATE:', 'Date:', 'Date', 'DATED:', 'Dated:' (especially when appearing near 'PLACE:', 'Place:', 'Place').\n"
+            "     3. Footer Date near 'Authorized Officer', 'Signature', 'Place', 'Date' (e.g. Authorized Officer, Place: Chennai, Date: 30.06.2026 -> '30-06-2026').\n"
+            "   - NEVER populate Catalogue View Date from: Auction Date, Auction End Date, Inspection Date, Last Submission Date, EMD Date, Demand Notice Date, or Symbolic Possession Date.\n"
+            "   - If no explicit publication/notice date label or footer date exists, return empty string \"\".\n"
+            "4. INSPECTION SCHEDULE LOGIC (IMAGE NOTICES):\n"
+            "   - Populate 'inspection_schedule_from' and 'inspection_schedule_to' ONLY if an explicit inspection label exists in text.\n"
+            "   - Accepted labels: 'Inspection', 'Inspection Date', 'Inspection Schedule', 'Date & Time of Inspection', 'Property Inspection', 'Inspection of Property', 'Site Visit', 'Viewing Date', 'Viewing Schedule'.\n"
+            "   - The extracted date must be physically associated with one of these explicit inspection labels.\n"
+            "   - If none of these labels exist in the notice text, return empty string \"\" for both inspection fields. Do NOT infer from auction/notice/demand/possession dates.\n"
             "5. EMD BANK LOGIC ('emd_bank_name'):\n"
-            "   - Search ONLY inside payment instruction sections ('EMD', 'Account Name', 'Account Number', 'IFSC', 'NEFT/RTGS', 'Beneficiary', 'Beneficiary Bank'). If missing, return empty string \"\"."
+            "   - Priority 1: Extract explicit Beneficiary Bank / Bank field under Account Details / Payment section (e.g. Beneficiary Bank: Axis Bank -> emd_bank_name = 'Axis Bank').\n"
+            "   - Priority 2: Default to 'institution_seller' if institution_seller is a bank (e.g. Canara Bank, Bank of Baroda, State Bank of India, Indian Bank, Punjab National Bank, Union Bank of India) and no separate/conflicting payment bank is specified in payment details.\n"
+            "6. COMPREHENSIVE BORROWER & MULTI-PARTY EXTRACTION (CRITICAL):\n"
+            "   - Capture ALL borrowers, co-borrowers, guarantors, legal heirs, and joint account holders listed under Borrower / Borrower(s) / Guarantor(s) / Applicant(s) / Loan Account Holder sections.\n"
+            "   - Do NOT truncate after the first borrower. Do NOT omit co-borrowers or guarantors.\n"
+            "   - Concatenate all names into a single string separated by ', ' while preserving their original document order, honorifics (Mr., Mrs., Dr., M/s., Late), and initials (e.g., 'Late Mr. A, Mrs. B, Mr. C, Ms. D' or 'Mr. Ramesh Kumar, Mrs. Lakshmi Ramesh, Mr. Arun Kumar'). Deduplicate identical names.\n"
+            "7. FOOTER PUBLICATION / CATALOGUE VIEW DATE SCANNING:\n"
+            "   - Scan the bottom portion of notice pages (especially near the Authorized Officer signature block, Place: / Date:) for explicit publication date markers ('Date:', 'DATE:', 'Dated:', 'DATED:'). Extract the adjacent date into 'catalogue_view_date'."
         )
 
         prompt = (
@@ -505,6 +517,77 @@ class GeminiService:
             logger.warning("Targeted re-extraction request failed: %s", exc)
 
         return {}
+
+    # ==========================================================
+    # Text-Based Extraction (PDF Catalogue Pipeline B)
+    # ==========================================================
+
+    def extract_pdf_catalogue(
+        self,
+        pdf_text: str,
+    ) -> dict:
+        """
+        Extract structured data from PDF auction catalogue text using Section-aware Label-based prompt.
+        Pipeline B: Dedicated for PDF catalogues. Does not affect image pipeline.
+        """
+        logger.info("Calling Gemini API for Pipeline B (PDF Catalogue Text Extraction).")
+
+        system_instruction = (
+            "You are a specialized structural PDF Auction Catalogue Data Extraction System.\n"
+            "You are processing a digital PDF auction catalogue that contains explicit field labels, section headers, seller details, bank details, and lot tables.\n\n"
+            "### STRICT SECTION-AWARE & EXPLICIT LABEL PARSING RULES:\n"
+            "1. SECTION 1 - AUCTION HEADER METADATA:\n"
+            "   - Extract Catalogue View Date strictly from fields explicitly labeled 'Catalogue View Date', 'Notice Date', 'Publication Date', or 'Issue Date'. Do NOT perform semantic guessing or use auction start/end dates.\n"
+            "   - Extract Inspection Schedule strictly from explicit labels 'Inspection Schedule' or 'Inspection Date'. If the value is a range (e.g., '22-07-26 to 22-07-26' or '22.07.2026 to 24.07.2026'), split into 'inspection_schedule_from' (22-07-2026) and 'inspection_schedule_to' (22-07-2026). If a single date is given, populate both fields with that date.\n"
+            "   - Extract Auction Start/End Date & Time, Auction Type, Auction Number, Auto Extension, Currency, Pre-Bid EMD, Delivery Timeline, and Full Payment Timeline.\n"
+            "2. SECTION 2 - SELLER DETAILS:\n"
+            "   - Extract Seller Name ('institution_seller'), Seller Address/Branch ('auction_office'), Seller Email ('email'), Contact Person ('authorized_officer_name'), and Telephone Number ('authorized_officer_number').\n"
+            "3. SECTION 3 - SELLER PAYMENT & BANK DETAILS:\n"
+            "   - Extract Bank Details STRICTLY from the 'Seller Account Details' or 'Payment Details' section.\n"
+            "   - Map Beneficiary Name, Bank Name ('emd_bank_name'), Branch ('branch_name'), Account Number ('emd_account_no'), and IFSC ('emd_ifsc'). Do NOT copy seller bank into emd_bank_name unless specified in the seller payment section.\n"
+            "4. SECTION 4 - LOT DETAILS (ONE JSON RECORD PER LOT):\n"
+            "   - Every 'Lot No' / 'Lot Number' starts a new independent auction record in the 'auctions' array.\n"
+            "   - Extract Lot Number ('auction_no'), Lot Name / Product Type / Description ('auction_description'), Category ('asset_category'), Quantity ('quantity'), Units ('units'), Start Price ('starting_price' / 'reserve_price'), Bid Increment ('increment_price'), Lot Location ('assets_location'), State ('state'), and Lot-Level Inspection if specified.\n"
+            "5. SHARED METADATA PROPAGATION:\n"
+            "   - Document-level header metadata (Auction Date, Submission Date, Inspection Schedule, Catalogue View Date, Seller Details, Payment Details) apply to all lot records in the 'auctions' array unless a lot specifies its own local value.\n"
+            "6. PRIORITY ORDER: 1. Explicit Field Labels, 2. Table Cell Relationships, 3. Section Headings, 4. Semantic Inference (only if label is missing).\n\n"
+            "Output exclusively RAW, VALID JSON matching the schema format below."
+        )
+
+        prompt = (
+            f"Extract all verified PDF auction catalogue data points exactly into the provided JSON schema structure from the text below.\n\n"
+            f"<pdf_text>\n{pdf_text}\n</pdf_text>\n\n"
+            f"{self.schema_text()}"
+        )
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [{"text": f"{system_instruction}\n\n{prompt}"}]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.0,
+                "maxOutputTokens": 8192
+            }
+        }
+        headers = {"Content-Type": "application/json"}
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=45)
+            if response.status_code == 200:
+                res_data = response.json()
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    content_parts = candidates[0].get("content", {}).get("parts", [])
+                    if content_parts:
+                        return self.parse_json(content_parts[0].get("text", ""))
+        except Exception as exc:
+            logger.error("PDF catalogue extraction failed: %s", exc)
+
+        return self.empty_record()
 
     # ==========================================================
     # Text-Based Extraction
