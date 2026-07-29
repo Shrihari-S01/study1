@@ -4,7 +4,15 @@ Auction Schemas and response formatting.
 
 from datetime import date, datetime
 from decimal import Decimal
-import dateutil.parser
+import logging
+
+logger = logging.getLogger(__name__)
+
+def safe_print(msg: str):
+    try:
+        print(msg)
+    except Exception:
+        pass
 
 SCRAP_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
@@ -100,23 +108,33 @@ def build_pipeline_response(result: dict) -> dict:
     records_dict = []
     raw_results = result.get("extraction_results", [])
     flat_raw_extracts = []
+    visited = set()
+    def extract_dicts(obj):
+        if id(obj) in visited:
+            return
+        visited.add(id(obj))
+        if isinstance(obj, dict):
+            flat_raw_extracts.append(obj)
+            for v in obj.values():
+                extract_dicts(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                extract_dicts(item)
+
     for res in raw_results:
-        if isinstance(res, dict):
-            recs = res.get("record") or res.get("fields")
-            if isinstance(recs, list) and recs:
-                flat_raw_extracts.extend(recs)
-            elif isinstance(recs, dict):
-                flat_raw_extracts.append(recs)
-            else:
-                flat_raw_extracts.append(res)
+        extract_dicts(res)
+    extract_dicts(result)
 
     for idx, record in enumerate(result.get("results", [])):
         if hasattr(record, "__table__"):
             db_dict = {c.key: getattr(record, c.key) for c in record.__table__.columns}
             
             raw_extract = None
-            if flat_raw_extracts and idx < len(flat_raw_extracts):
-                raw_extract = flat_raw_extracts[idx]
+            if flat_raw_extracts:
+                if idx < len(flat_raw_extracts):
+                    raw_extract = flat_raw_extracts[idx]
+                else:
+                    raw_extract = flat_raw_extracts[0]
             
             category = str(db_dict.get("asset_category") or "").lower()
             asset_type_val = str(db_dict.get("asset_type") or "").lower()
@@ -169,7 +187,17 @@ def build_pipeline_response(result: dict) -> dict:
             record_dict["asset_category"] = category or None
             record_dict["auction_no"] = db_dict.get("auction_no") or None
             record_dict["auction_description"] = db_dict.get("auction_description") or None
-            record_dict["assets_location"] = db_dict.get("assets_location") or db_dict.get("property_address") or (raw_extract.get("assets_location") if raw_extract else None) or None
+            raw_loc = None
+            if raw_extract and isinstance(raw_extract, dict):
+                raw_loc = raw_extract.get("assets_location") or raw_extract.get("property_address") or raw_extract.get("address") or raw_extract.get("location")
+            if not raw_loc and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        found_loc = item.get("assets_location") or item.get("property_address") or item.get("address") or item.get("location")
+                        if found_loc:
+                            raw_loc = found_loc
+                            break
+            record_dict["assets_location"] = db_dict.get("assets_location") or db_dict.get("property_address") or raw_loc or None
 
             # Notice bank details and branch office department mapping
             bank_val = db_dict.get("institution_seller") or None
@@ -186,13 +214,27 @@ def build_pipeline_response(result: dict) -> dict:
             if "borrower" in record_dict:
                 record_dict["borrower"] = bor_val
 
-            # EMD details mapping
+            # EMD details mapping with dynamic fallback scanning
+            emd_bank = db_dict.get("emd_bank_name")
+            emd_acc = db_dict.get("emd_account_no") or db_dict.get("emd_account_number")
+            emd_ifsc_val = db_dict.get("emd_ifsc") or db_dict.get("ifsc")
+
+            if flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        if not emd_bank:
+                            emd_bank = item.get("emd_bank_name") or item.get("bank_name")
+                        if not emd_acc:
+                            emd_acc = item.get("emd_account_no") or item.get("emd_account_number") or item.get("account_number")
+                        if not emd_ifsc_val:
+                            emd_ifsc_val = item.get("emd_ifsc") or item.get("ifsc")
+
             if "emd_bank_name" in record_dict:
-                record_dict["emd_bank_name"] = db_dict.get("emd_bank_name") or None
+                record_dict["emd_bank_name"] = emd_bank or None
             if "emd_account_number" in record_dict:
-                record_dict["emd_account_number"] = db_dict.get("emd_account_no") or None
+                record_dict["emd_account_number"] = emd_acc or None
             if "emd_ifsc" in record_dict:
-                record_dict["emd_ifsc"] = db_dict.get("emd_ifsc") or db_dict.get("ifsc") or None
+                record_dict["emd_ifsc"] = emd_ifsc_val or None
 
             # Numeric price conversions (do not default missing values to 0)
             starting_price_val = clean_numeric(db_dict.get("auction_start_price"))
@@ -351,31 +393,40 @@ def build_pipeline_response(result: dict) -> dict:
             else:
                 record_dict["payment_type"] = None
 
-            # Dynamic Date Classification & Extraction Pipeline (Zero Hardcoding)
             raw_notice_date = None
             if raw_extract and isinstance(raw_extract, dict):
-                raw_notice_date = raw_extract.get("catalogue_view_date") or raw_extract.get("notice_date") or raw_extract.get("publication_date")
+                raw_notice_date = raw_extract.get("catalogue_view_date") or raw_extract.get("notice_date") or raw_extract.get("publication_date") or raw_extract.get("date") or raw_extract.get("place_and_date")
             
-            cat_view = format_date_to_dmy(db_dict.get("catalogue_view_date"))
-            if not cat_view and raw_notice_date:
-                cat_view = format_date_to_dmy(raw_notice_date) or str(raw_notice_date).strip()
-            if not cat_view and db_dict.get("sale_notice_date"):
-                cat_view = format_date_to_dmy(db_dict.get("sale_notice_date"))
+            if not raw_notice_date and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        found = item.get("catalogue_view_date") or item.get("notice_date") or item.get("publication_date") or item.get("date") or item.get("place_and_date")
+                        if found:
+                            raw_notice_date = found
+                            break
 
-            # Disambiguate inspection dates:
-            # Set to None unless raw_extract explicitly contains inspection schedule information distinct from notice date
-            insp_from = None
-            insp_to = None
-            has_insp_kw = False
+            cat_raw_val = db_dict.get("catalogue_view_date") or db_dict.get("sale_notice_date") or raw_notice_date
+            cat_view = format_date_to_dmy(cat_raw_val)
+            if not cat_view and cat_raw_val:
+                import re
+                match = re.search(r'\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b', str(cat_raw_val))
+                if match:
+                    cat_view = format_date_to_dmy(match.group(0)) or match.group(0)
+                else:
+                    cat_view = str(cat_raw_val).strip()
+
+            # Inspection dates:
+            insp_from = format_date_to_dmy(db_dict.get("inspection_from_date"), include_time=True)
+            insp_to = format_date_to_dmy(db_dict.get("inspection_to_date"), include_time=True)
+
+            # If no explicit inspection schedule in raw extract, force inspection dates to None
+            raw_insp_val = None
             if raw_extract and isinstance(raw_extract, dict):
-                raw_txt = str(raw_extract).lower()
-                has_insp_kw = any(kw in raw_txt for kw in ["inspection", "site visit", "visit date", "material inspection"])
-                raw_insp_val = raw_extract.get("inspection_schedule_from") or raw_extract.get("inspection_schedule_from_date")
-                
-                if has_insp_kw and raw_insp_val and str(raw_insp_val).strip() not in ("", "None", "null"):
-                    if not cat_view or str(raw_insp_val).strip() != str(cat_view).strip():
-                        insp_from = format_date_to_dmy(db_dict.get("inspection_from_date"), include_time=True)
-                        insp_to = format_date_to_dmy(db_dict.get("inspection_to_date"), include_time=True)
+                raw_insp_val = raw_extract.get("inspection_schedule_from") or raw_extract.get("inspection_schedule_from_date") or raw_extract.get("inspection_from_date")
+
+            if not raw_insp_val or str(raw_insp_val).strip() in ("", "None", "null"):
+                insp_from = None
+                insp_to = None
 
             record_dict["inspection_schedule_from_date"] = insp_from
             record_dict["inspection_schedule_to_date"] = insp_to
@@ -447,9 +498,116 @@ def build_pipeline_response(result: dict) -> dict:
             if "authorized_officer_number" in record_dict:
                 record_dict["authorized_officer_number"] = db_dict.get("authorized_officer_number") or db_dict.get("contact_number") or None
 
+            # Dynamic Date Post-Processing Guard: Preserve inspection dates if extracted
+            raw_insp_from_candidate = db_dict.get("inspection_from_date")
+            raw_insp_to_candidate = db_dict.get("inspection_to_date")
+            
+            if not raw_insp_from_candidate and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        cand = item.get("inspection_schedule_from") or item.get("inspection_schedule_from_date") or item.get("inspection_from_date")
+                        if cand and str(cand).strip() not in ("", "None", "null"):
+                            raw_insp_from_candidate = cand
+                            break
+
+            if not raw_insp_to_candidate and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        cand = item.get("inspection_schedule_to") or item.get("inspection_schedule_to_date") or item.get("inspection_to_date")
+                        if cand and str(cand).strip() not in ("", "None", "null"):
+                            raw_insp_to_candidate = cand
+                            break
+
+            final_insp_from = format_date_to_dmy(raw_insp_from_candidate, include_time=True) if raw_insp_from_candidate else (insp_from or None)
+            final_insp_to = format_date_to_dmy(raw_insp_to_candidate, include_time=True) if raw_insp_to_candidate else (insp_to or None)
+
+            # Dynamic catalogue_view_date fallback resolution
+            cand_cat = db_dict.get("catalogue_view_date") or db_dict.get("sale_notice_date") or raw_notice_date
+            if not cand_cat and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        for k, v in item.items():
+                            if v and isinstance(v, str) and ("date" in k.lower() or "place" in k.lower() or "notice" in k.lower()):
+                                if str(v).strip() not in ("", "None", "null"):
+                                    import re
+                                    if re.search(r'\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b', str(v)):
+                                        cand_cat = v
+                                        break
+                        if cand_cat:
+                            break
+
+            final_cat_view = cat_view
+            if not final_cat_view and cand_cat:
+                final_cat_view = format_date_to_dmy(cand_cat)
+                if not final_cat_view:
+                    import re
+                    m_c = re.search(r'\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b', str(cand_cat))
+                    if m_c:
+                        final_cat_view = format_date_to_dmy(m_c.group(0)) or m_c.group(0)
+                    else:
+                        final_cat_view = str(cand_cat).strip()
+
+            record_dict["catalogue_view_date"] = final_cat_view
+            record_dict["inspection_schedule_from_date"] = final_insp_from
+            record_dict["inspection_schedule_to_date"] = final_insp_to
+
             # Ensure only the schema fields are returned, clean and stripped of unused keys
-            filtered_record = {k: record_dict[k] for k in schema_fields}
+            filtered_record = {k: record_dict[k] for k in schema_fields if k in record_dict}
+            if "catalogue_view_date" in schema_fields:
+                filtered_record["catalogue_view_date"] = final_cat_view
+            if "inspection_schedule_from_date" in schema_fields:
+                filtered_record["inspection_schedule_from_date"] = final_insp_from
+            if "inspection_schedule_to_date" in schema_fields:
+                filtered_record["inspection_schedule_to_date"] = final_insp_to
+
+            # Print exact requested debug logs before appending to response
+            print("Normalized:", cat_raw_val or cand_cat)
+            print("Schema Record:", record_dict.get("catalogue_view_date"))
+            print("Final API:", filtered_record.get("catalogue_view_date"))
+            
+            print("=== DEBUG LOG [3/3] Final Response ===")
+            print(f"{filtered_record}")
+            
             records_dict.append(filtered_record)
+        elif isinstance(record, dict):
+            rec_copy = dict(record)
+            cat_val = rec_copy.get("catalogue_view_date") or rec_copy.get("sale_notice_date")
+            if not cat_val and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        found = item.get("catalogue_view_date") or item.get("notice_date") or item.get("publication_date") or item.get("date") or item.get("place_and_date")
+                        if found:
+                            cat_val = found
+                            break
+            final_val = format_date_to_dmy(cat_val) if cat_val else None
+            if not final_val and cat_val:
+                import re
+                match = re.search(r'\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b', str(cat_val))
+                if match:
+                    final_val = format_date_to_dmy(match.group(0)) or match.group(0)
+                else:
+                    final_val = str(cat_val).strip()
+            rec_copy["catalogue_view_date"] = final_val or None
+
+            insp_from_val = rec_copy.get("inspection_schedule_from_date") or rec_copy.get("inspection_schedule_from")
+            insp_to_val = rec_copy.get("inspection_schedule_to_date") or rec_copy.get("inspection_schedule_to")
+            if not insp_from_val and flat_raw_extracts:
+                for item in flat_raw_extracts:
+                    if isinstance(item, dict):
+                        f_date = item.get("inspection_schedule_from") or item.get("inspection_schedule_from_date") or item.get("inspection_from_date")
+                        t_date = item.get("inspection_schedule_to") or item.get("inspection_schedule_to_date") or item.get("inspection_to_date")
+                        if f_date:
+                            insp_from_val = f_date
+                        if t_date:
+                            insp_to_val = t_date
+                        if f_date or t_date:
+                            break
+            if "inspection_schedule_from_date" in rec_copy:
+                rec_copy["inspection_schedule_from_date"] = format_date_to_dmy(insp_from_val) if insp_from_val else None
+            if "inspection_schedule_to_date" in rec_copy:
+                rec_copy["inspection_schedule_to_date"] = format_date_to_dmy(insp_to_val) if insp_to_val else None
+
+            records_dict.append(rec_copy)
         else:
             records_dict.append(record)
 

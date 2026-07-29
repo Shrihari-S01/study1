@@ -952,29 +952,74 @@ class AuctionParser:
                 base64_image,
                 ocr_text=ocr_text
             )
-            # Step 2: Log the exact JSON returned by the Vision LLM
-            safe_print("\n=== STEP 2: RAW JSON FROM VISION LLM ===")
-            safe_print(llm_result_str)
-            safe_print("========================================\n")
             llm_result = self.llm.parse_json(llm_result_str)
+
+            # Debug Output as requested
+            import json as json_lib
+            safe_print("\n========== RAW GEMINI JSON ==========")
+            safe_print(json_lib.dumps(llm_result, indent=2))
+            safe_print("=====================================\n")
+
+            # Extract common dict
+            common = {}
+            for group_key in [
+                "common_fields",
+                "event_and_institution_details",
+                "auction_mechanics_and_dates",
+                "emd_and_payment_details",
+                "portal_specific_fields"
+            ]:
+                if group_key in llm_result and isinstance(llm_result[group_key], dict):
+                    common.update(llm_result[group_key])
+
+            llm_auctions = llm_result.get("auctions", [])
+            if not llm_auctions:
+                llm_auctions = [{}]
+
+            first_auction = llm_auctions[0] if isinstance(llm_auctions[0], dict) else {}
+
+            safe_print("\n========== MISSING REQUIRED FIELDS ==========")
+            missing_mandatory = []
+            for field in [
+                "emd_bank_name",
+                "catalogue_view_date",
+                "inspection_schedule_from_date",
+                "inspection_schedule_to_date"
+            ]:
+                val = common.get(field) or first_auction.get(field) or common.get(field.replace("_date", "")) or first_auction.get(field.replace("_date", "")) or common.get("inspection_schedule_from") or first_auction.get("inspection_schedule_from")
+                safe_print(f"{field} => {val}")
+                if not val or str(val).strip() in ("", "None", "null"):
+                    missing_mandatory.append(field)
+            safe_print("=============================================\n")
+
+            # Perform Targeted Re-extraction Stage if missing fields found
+            if missing_mandatory:
+                logger.info("Triggering Targeted Re-extraction pass for missing fields: %s", missing_mandatory)
+                re_extract_result = self.llm.targeted_reextraction(
+                    base64_image,
+                    missing_mandatory,
+                    ocr_text=ocr_text
+                )
+                safe_print("\n========== TARGETED RE-EXTRACTION RESULT ==========")
+                safe_print(json_lib.dumps(re_extract_result, indent=2))
+                safe_print("===================================================\n")
+
+                if isinstance(re_extract_result, dict):
+                    for m_field in missing_mandatory:
+                        re_val = re_extract_result.get(m_field) or re_extract_result.get(m_field.replace("_date", ""))
+                        if re_val and str(re_val).strip() not in ("", "None", "null"):
+                            common[m_field] = str(re_val).strip()
+                            if m_field in ("inspection_schedule_from_date", "inspection_schedule_from"):
+                                common["inspection_schedule_from"] = str(re_val).strip()
+                            elif m_field in ("inspection_schedule_to_date", "inspection_schedule_to"):
+                                common["inspection_schedule_to"] = str(re_val).strip()
+                            for auc_item in llm_auctions:
+                                if isinstance(auc_item, dict):
+                                    auc_item[m_field] = str(re_val).strip()
+
         except Exception as exc:
             logger.error("LLM vision extraction failed: %s.", exc)
             raise RuntimeError(f"Vision extraction failed: {exc}") from exc
-
-        common = {}
-        for group_key in [
-            "common_fields",
-            "event_and_institution_details",
-            "auction_mechanics_and_dates",
-            "emd_and_payment_details",
-            "portal_specific_fields"
-        ]:
-            if group_key in llm_result and isinstance(llm_result[group_key], dict):
-                common.update(llm_result[group_key])
-
-        llm_auctions = llm_result.get("auctions", [])
-        if not llm_auctions:
-            llm_auctions = [{}]
 
         parsed_auctions = []
         confidences = []
@@ -983,16 +1028,66 @@ class AuctionParser:
             # Construct a flat dictionary for this specific auction
             flat_auc = {}
 
+            # Field Alias Normalizer: normalize raw LLM fields across common and auction items into canonical keys
+            raw_item = {}
+            raw_item.update(common)
+            if isinstance(llm_auc, dict):
+                raw_item.update(llm_auc)
+
+            # 1. Inspection aliases normalization
+            insp_val = (
+                raw_item.get("inspection_schedule_from") or
+                raw_item.get("inspection_schedule_from_date") or
+                raw_item.get("inspection_from_date") or
+                raw_item.get("inspection_schedule") or
+                raw_item.get("inspection_schedule_date") or
+                raw_item.get("inspection_date") or
+                raw_item.get("inspection_from") or
+                raw_item.get("property_inspection_date") or
+                raw_item.get("inspection") or
+                raw_item.get("site_visit_date") or
+                raw_item.get("viewing_date")
+            )
+            insp_to_val = (
+                raw_item.get("inspection_schedule_to") or
+                raw_item.get("inspection_schedule_to_date") or
+                raw_item.get("inspection_to_date")
+            )
+            if insp_val and str(insp_val).strip() not in ("", "None", "null"):
+                flat_auc["inspection_schedule_from"] = str(insp_val).strip()
+                flat_auc["inspection_schedule_from_date"] = str(insp_val).strip()
+                flat_auc["inspection_schedule_to"] = str(insp_to_val).strip() if insp_to_val else str(insp_val).strip()
+                flat_auc["inspection_schedule_to_date"] = str(insp_to_val).strip() if insp_to_val else str(insp_val).strip()
+
+            # 2. Catalogue View Date aliases normalization
+            cat_val = (
+                raw_item.get("catalogue_view_date") or
+                raw_item.get("catalogue_date") or
+                raw_item.get("notice_date") or
+                raw_item.get("publication_date") or
+                raw_item.get("issued_date") or
+                raw_item.get("issue_date") or
+                raw_item.get("document_date") or
+                raw_item.get("dated") or
+                raw_item.get("DATE") or
+                raw_item.get("Date") or
+                raw_item.get("place_and_date") or
+                raw_item.get("release_date")
+            )
+            if cat_val and str(cat_val).strip() not in ("", "None", "null"):
+                flat_auc["catalogue_view_date"] = str(cat_val).strip()
+
             # Map common fields and asset specific fields
             for f in self.supported_fields():
-                if f in llm_auc and llm_auc[f] not in ("", None):
-                    flat_auc[f] = llm_auc[f]
-                elif f in common:
-                    flat_auc[f] = common[f]
-                elif f in llm_auc:
-                    flat_auc[f] = llm_auc[f]
-                else:
-                    flat_auc[f] = ""
+                if f not in flat_auc or not flat_auc[f]:
+                    if f in llm_auc and llm_auc[f] not in ("", None):
+                        flat_auc[f] = llm_auc[f]
+                    elif f in common and common[f] not in ("", None):
+                        flat_auc[f] = common[f]
+                    elif f in llm_auc:
+                        flat_auc[f] = llm_auc[f]
+                    else:
+                        flat_auc[f] = ""
 
             # Fill missing
             flat_auc = self.fill_missing(flat_auc)
@@ -1029,6 +1124,22 @@ class AuctionParser:
 
             parsed_auctions.append(mapped_auc)
             confidences.append(conf)
+
+        # Validation: Count detected structural auction blocks vs generated JSON records
+        num_llm_auctions = len(llm_auctions)
+        num_generated_records = len(parsed_auctions)
+        safe_print(f"\n================ VALIDATION ================")
+        safe_print(f"  Detected Auction Blocks : {num_llm_auctions}")
+        safe_print(f"  Generated Records       : {num_generated_records}")
+        if num_llm_auctions != num_generated_records:
+            logger.warning(
+                "Auction block count mismatch: Detected %d blocks but generated %d records.",
+                num_llm_auctions, num_generated_records
+            )
+            safe_print(f"  WARNING: Block count mismatch detected ({num_llm_auctions} vs {num_generated_records}).")
+        else:
+            safe_print(f"  VERIFICATION SUCCESS: Block count matches generated records count.")
+        safe_print(f"============================================\n")
 
         return {
             "fields": parsed_auctions,

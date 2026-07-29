@@ -304,52 +304,20 @@ class GeminiService:
 
         system_instruction = (
             "You are a highly defensive, zero-tolerance data-extraction vision pipeline specialized in structural document intelligence. You process highly diverse Indian bank auction notices, asset disposal catalogues, regulatory public announcements, and internal digital admin forms. Your primary directive is 100% data fidelity. You must never invent, assume, approximate, or hallucinate any data point.\n\n"
-            "### CRITICAL ADAPTABILITY & STRUCTURAL PARSING RULES:\n"
-            "1. UNIVERSAL LAYOUT AGNOSTICISM: Treat every input as structurally unique. Inputs range from messy, unstructured newspaper columns and multi-page PDF tables to highly structured web portal forms with dropdowns and text boxes. Parse the text dynamically based on spatial proximity, field labels, and visual alignment.\n"
-            "2. RIGOROUS DECOMPOSITION: When data entities (such as multi-party names or combined address blocks) are densely packed, map out the semantic transitions perfectly. Dissect these strings cleanly into their unique JSON fields.\n"
-            "3. MULTI-ENTITY ARRAY SEQUENCING (CRITICAL): Do NOT map table rows 1-to-1 to JSON objects. If multiple items listed under a single table row or block are collectively auctioned (such as a plant & machinery list of 12 items collectively auctioned as a single lot), extract them as a single auction object using the combined total reserve price (e.g. 39177800) and combined total EMD (e.g. 3917780). Otherwise, if a single table row or section lists multiple separate properties with their own individual reserve prices (e.g. 'Property No. 1' and 'Property No. 2' having separate prices), you MUST generate a SEPARATE object in the 'auctions' list/array for each property/asset. Label their auction_no fields with suffixes (e.g., '2a' and '2b' or '2.1' and '2.2'). For example, you must generate one object for Property No. 1 (with reserve_price 30504500 and emd_amount 3050450, labeled auction_no '2a') and a second object for Property No. 2 (with reserve_price 42469000 and emd_amount 4246900, labeled auction_no '2b'). Never group multiple separate reserve prices or combine separate properties into a single object. Each property/asset must have its own unique auction object in the list.\n"
-            "4. TABULAR HORIZONTAL ALIGNMENT: When notices are printed in table format, strictly align fields horizontally. Do not mix property addresses, EMD amounts, or reserve prices across different rows. Ensure a cell's extracted data corresponds exactly to the row's identifier/borrower.\n"
-            "5. MULTI-COLUMN NOTICE PAGES (CRITICAL): Some notice pages are printed in a multi-column format (e.g. left column and right column side-by-side). You MUST read both columns from top to bottom. Visually identify every single serial number block (which may have OCR spelling variations like 'Sl.No.', 'SI.No.', 'S1.No.', 'S.No.') in both columns, and generate a SEPARATE object in the 'auctions' array for each serial number (e.g., Sl.No.1, SI.No.2, SI.No.3, SI.No.4, SI.No.5, SI.No.6). Never omit any columns or skip sections on the right/left side of the page.\n\n"
-            "### MANDATORY ZERO-HALLUCINATION & NORMALIZATION CONTROLS:\n"
-            "1. STRICT FILTERS FOR ABSENT DATA (CRITICAL): If a specific column, dropdown, or field defined in the JSON schema is missing, blank, not visible, or omitted from the source document, you MUST return an empty string \"\" for that field. You are strictly forbidden from providing mock data, placeholder variables, filler values, or template content.\n"
-            "2. ENFORCED MATHEMATICAL SCALE MULTIPLIERS: Inspect all structural layout sections, column headers, footnotes, and margins for scale context keys (e.g., \"Amount in Lakhs\", \"(Rs. in Crore)\"). When a multiplier context key is verified, you must mathematically compute and expand the field value into a fully detailed, literal whole integer string (e.g., \"11.16\" Crores -> \"111600000\").\n"
-            "3. FINANCIAL TEXT CHARACTER STRIPPING: Strip all financial string extractions (Reserve Price, EMD, Increment) of character noise, including commas, spaces, currency indicators (₹, Rs, Rs., INR), or trailing expressions (/-). Return exclusively pure numeric digit strings (e.g., \"₹ 92,77,200/-\" must be returned exactly as \"9277200\").\n"
-            "4. COMPLETE LITERAL GEOGRAPHIC PARSING (CRITICAL): Capture the COMPLETE, exact, full multi-line location/address text inside \"assets_location\" (and \"property_address\"). Include all village, tehsil, road, landmark, city, district, pin code, and additional borrower/mortgagor/guarantor address details listed for the asset in the notice. Do NOT truncate, shorten, summarize, or split the location across OCR line breaks.\n\n"
-            "### STRICT STANDARDIZATION & VALUE CONSTRAINTS:\n"
-            "1. asset_type: Must be strictly one of: \"movable\" or \"immovable\". Do not use any other words.\n"
-            "2. asset_category: Must be strictly one of: \"scrap\", \"gold\", \"vehicle\", \"pearl\", or \"property\".\n"
-            "   - If asset_type is \"movable\", asset_category must be one of \"scrap\", \"gold\", \"vehicle\", or \"pearl\".\n"
-            "   - If asset_type is \"immovable\", asset_category must be \"property\".\n"
-            "3. AUCTION TYPE: Must be strictly \"Forward\", \"Reverse\", or \"Tender\". If not found, return \"\".\n"
-            "4. AUTO EXTENSION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
-            "5. AUTO EXTENSION MODE: Must be strictly \"Infinite\" or \"Custom\". If not mentioned, default to \"\".\n"
-            "6. AUCTION LIVE STATUS: Must be strictly \"Live\", \"Reschedule\", \"Not Active\", or \"Cancel\". If not mentioned, default to \"\".\n"
-            "7. FIRST BID ACCEPTANCE CONDITION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
-            "8. PAYMENT TYPE: Extract the raw payment mode/type printed in the notice (e.g. \"RTGS/ NEFT\", \"DD\", \"Cheque\", \"Amount\", \"Transaction Value\"). For Property, choose strictly from \"Amount\" or \"Transaction Value\".\n"
-            "9. ARE YOU INTERESTED?: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
-            "10. DATES & TIMES FORMATTING: Format all date and time fields (including \"auction_start_date_time\", \"auction_end_date_time\", \"submit_application\", \"inspection_schedule_from\", \"inspection_schedule_to\", \"repo_date\", \"catalogue_view_date\") strictly in standard format \"DD-MM-YYYY HH:MM\" or \"DD-MM-YYYY\" if no time is available.\n"
-            "11. PER-AUCTION ACCOUNT DETAILS: Notice images typically list separate \"ACCOUNT DETAILS\" (Bank Name, Account No, IFSC Code) for EMD deposit. Extract EMD Bank Name independently from the Bank Name listed in the account details section (e.g. \"Canara Bank\"). Do NOT derive or leave EMD Bank Name empty; extract it independently from the notice under \"emd_bank_name\". Extract account number under \"emd_account_no\" and IFSC under \"emd_ifsc\".\n"
-            "12. SEMANTIC DATE CLASSIFICATION (CRITICAL - NO HARDCODING):\n"
-            "    - Every date in the document must be classified based strictly on surrounding labels, headings, and semantic meaning rather than page order or fixed document layout:\n"
-            "    - Inspection Schedule (\"inspection_schedule_from\", \"inspection_schedule_to\"): Populate ONLY if the document explicitly describes an inspection schedule associated with semantic context like 'Inspection', 'Inspection Schedule', 'Property Inspection', 'Inspection Date', 'Inspection From/To', 'Asset Inspection', 'Site Visit', or 'Material Inspection'. If no explicit inspection details are present, you MUST return empty string \"\". NEVER infer or copy inspection dates from Notice Date, Publication Date, Advertisement Date, Signing Date, or Auction/EMD dates.\n"
-            "    - Catalogue View Date (\"catalogue_view_date\"): Classify dates associated with document publication, notice date, advertisement date, document issue, signing date, or 'Place & Date' near the Authorized Officer signature block as \"catalogue_view_date\". Format as \"DD-MM-YYYY\". Do NOT reuse this date for inspection fields.\n"
-            "    - Auction Start & End Dates (\"auction_start_date_time\", \"auction_end_date_time\"): Map dates explicitly labeled as auction date, e-auction schedule, or auction start/end time.\n"
-            "    - Submit Application / EMD Deadline (\"submit_application\"): Map dates explicitly labeled as EMD submission deadline, last date of receipt of EMD, or application submission deadline.\n"
-            "    - ZERO-DUPLICATION & DISAMBIGUATION: Assign each extracted date to only ONE business category field based on its highest semantic confidence. Never duplicate one extracted date across unrelated fields."
-            "13. QUANTITY AND UNITS EXTRACTION (CRITICAL):\n"
-            "    - When a notice specifies quantity (e.g. 'Qty - 01 Set', 'Qty - 01 Lot'), extract numeric quantity (e.g. \"1\") into \"quantity\" and unit string (e.g. \"Set\" or \"Lot\") into \"units\". If representing the entire lot, extract \"quantity\": \"1\", \"units\": \"Set\" (or \"Lot\").\n"
-            "14. EXACT MATCHING FOR CATEGORY METADATA FIELDS:\n"
-            "    - \"institution_seller\": Notice-wide institution or seller bank name (replaces notice-wide bank name).\n"
-            "    - \"auction_office\": Notice-wide branch or auction office name.\n"
-            "    - \"auction_department\": Notice-wide department or branch dept name.\n"
-            "    - \"digital_certificate\": Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
-            "    - \"catalogue_view_date\": Store the notice publication date/release date printed lower down/at the bottom of the page. Do NOT confuse it with the auction date. Format as \"DD-MM-YYYY\".\n"
-            "    - \"vendor_name\": Choose strictly from: \"ABI\", \"AS\", \"TESTEMP\", \"BINUKUMAR\", \"FSTEMP\", \"TEST EMPS\", \"TEST EMP\".\n"
-            "    - \"asset_subcategory\": Choose strictly from: \"Compressors\", \"E-Waste\", \"Used and Unused Machineries\", \"Wood Scrap\", \"Car\", \"LKI\" (for scrap), or \"Car\" (for vehicle).\n"
-            "    - \"sum_of_carat_18\" to \"sum_of_carat_24\": Extract the exact carat weight value or flag (e.g. \"Y\" or \"-\") for gold.\n"
-            "    - \"sum_of_net_weight_total\", \"sum_of_gross_weight_total\": Extract total gold weight details.\n"
-            "    - \"year\", \"reg_no\", \"repo_date\", \"km_driven\", \"rc\", \"chassis_number\", \"yard_rent_percent\": Extract for vehicles.\n"
-            "    - \"event_type\": Choose strictly from: \"Insurance Salvage\", \"REPO\", \"Sarfaesi\", \"DRT\", \"NCLT\", \"Consumer/Seller\", \"SARFAESI ACT\", \"kjno\", \"binnukutty\", \"qwerty\", \"bbbb\"."
+            "### CRITICAL MULTI-RECORD & STRUCTURAL PARSING RULES:\n"
+            "1. MULTI-RECORD ENTRY BOUNDARY DETECTION (CRITICAL): First, scan the document to detect every independent auction entry. Look for structural boundary markers such as 'Sl.No.', 'Serial Number', 'Lot Number', 'Property Number', 'Item No.', '1.', '2.', '3.', '4.', '5.', '6.', or separate borrower blocks across all columns (left and right). Extract EVERY detected auction as an independent object inside the 'auctions' array. Do NOT merge adjacent or multi-column auction entries. For multi-entry public notices (e.g., LIC Housing Finance or Bank notices containing 6 properties/lots), you MUST return exactly as many objects in the 'auctions' array as there are independent auction entries (e.g. 6 objects for 6 lots).\n"
+            "2. GLOBAL AUCTION METADATA CLASSIFICATION & PROPAGATION:\n"
+            "   - Extract document-level metadata (E-Auction Website, Global Inspection Schedule, Last Date of Submission, Auction Start/End Date & Time, Public Notice Date/Catalogue View Date, Payment Instructions, Terms & Conditions) once into top-level JSON fields (such as 'event_and_institution_details', 'auction_mechanics_and_dates', 'emd_and_payment_details').\n"
+            "   - Shared values (like Global Catalogue View Date or Global Auction Date) apply to all auction records unless a specific auction lot defines its own local value.\n"
+            "3. CATALOGUE VIEW DATE LOGIC:\n"
+            "   - Catalogue View Date represents the publication/issue date of the notice (NOT the auction date).\n"
+            "   - Priority: 1. Explicit Catalogue View Date, 2. Public Notice Date, 3. Notice Date, 4. Date near Authorized Officer signature, 5. Footer 'Date' (e.g. 'Date: 30.06.2026' -> '30-06-2026').\n"
+            "   - NEVER use Auction Start/End Date, Last Submission Date, Inspection Date, Demand Notice Date, or Possession Date for Catalogue View Date.\n"
+            "4. INSPECTION SCHEDULE LOGIC:\n"
+            "   - Populate inspection dates ('inspection_schedule_from', 'inspection_schedule_to') ONLY from explicit inspection sections (e.g. 'Date & Time of Inspection of Property Documents', 'Inspection of the Property', 'Site Visit', 'Viewing Date').\n"
+            "   - If no explicit inspection section exists in the document, return empty string \"\" for inspection fields.\n"
+            "5. EMD BANK LOGIC ('emd_bank_name'):\n"
+            "   - Search ONLY inside payment instruction sections ('EMD', 'Account Name', 'Account Number', 'IFSC', 'NEFT/RTGS', 'Beneficiary', 'Beneficiary Bank'). If missing, return empty string \"\"."
         )
 
         prompt = (
@@ -464,6 +432,79 @@ class GeminiService:
         except Exception as exc:
             logger.exception("Gemini API response parsing failed.")
             raise RuntimeError(f"Gemini Error : {exc}") from exc
+
+    # ==========================================================
+    # Targeted Re-extraction (Focus on 4 Key Fields)
+    # ==========================================================
+
+    def targeted_reextraction(
+        self,
+        base64_image: str,
+        missing_fields: list[str],
+        ocr_text: str = "",
+    ) -> dict:
+        """
+        Perform a targeted second pass Gemini call focusing ONLY on missing mandatory fields.
+        """
+        logger.info("Running targeted Gemini re-extraction pass for missing fields: %s", missing_fields)
+
+        field_descriptions = []
+        if "emd_bank_name" in missing_fields:
+            field_descriptions.append("- EMD Bank Name (emd_bank_name): Search ONLY inside payment instructions (Account Name, Account Number, IFSC, NEFT/RTGS, Beneficiary Bank). Do NOT use lending bank/seller bank unless specified in payment section.")
+        if "catalogue_view_date" in missing_fields:
+            field_descriptions.append("- Catalogue View Date (catalogue_view_date): Extract explicit Catalogue View Date, Notice Date, Publication Date, Dated/Date, or Place+Date. Format 'DD-MM-YYYY'. NEVER use Auction Date or EMD Date.")
+        if "inspection_schedule_from_date" in missing_fields or "inspection_schedule_from" in missing_fields:
+            field_descriptions.append("- Inspection Schedule From Date (inspection_schedule_from_date): Extract start date ONLY if document explicitly contains 'Inspection', 'Property Inspection', 'Site Visit', 'Viewing Date', or 'Inspection Schedule'. Format 'DD-MM-YYYY'.")
+        if "inspection_schedule_to_date" in missing_fields or "inspection_schedule_to" in missing_fields:
+            field_descriptions.append("- Inspection Schedule To Date (inspection_schedule_to_date): Extract end date ONLY if document explicitly contains 'Inspection', 'Property Inspection', 'Site Visit', 'Viewing Date', or 'Inspection Schedule'. Format 'DD-MM-YYYY'.")
+
+        prompt = (
+            "Review the document image and text again. Focus exclusively on extracting ONLY these missing fields:\n"
+            + "\n".join(field_descriptions) + "\n\n"
+            "Do not return any other fields. If a field is absent in the document, return \"\".\n"
+            "Return a raw JSON object with keys: emd_bank_name, catalogue_view_date, inspection_schedule_from_date, inspection_schedule_to_date."
+        )
+
+        if ocr_text:
+            prompt += f"\n\nOCR Reference Text:\n<ocr_text>\n{ocr_text}\n</ocr_text>"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": base64_image
+                            }
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.0,
+                "maxOutputTokens": 1024
+            }
+        }
+        headers = {"Content-Type": "application/json"}
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            if response.status_code == 200:
+                res_data = response.json()
+                candidates = res_data.get("candidates", [])
+                if candidates:
+                    content_parts = candidates[0].get("content", {}).get("parts", [])
+                    if content_parts:
+                        raw_text = content_parts[0].get("text", "")
+                        return self.parse_json(raw_text)
+        except Exception as exc:
+            logger.warning("Targeted re-extraction request failed: %s", exc)
+
+        return {}
 
     # ==========================================================
     # Text-Based Extraction
@@ -625,7 +666,6 @@ class GeminiService:
         if not response:
             return self.empty_record()
 
-        import json_repair
         clean_res = response.strip()
 
         # Remove markdown code block wraps if present
@@ -639,11 +679,14 @@ class GeminiService:
         try:
             return json.loads(clean_res)
         except Exception:
-            # Fall back to robust json_repair
+            # Fall back to robust json_repair if available
             try:
+                import json_repair
                 repaired = json_repair.repair_json(clean_res, return_objects=True)
                 if isinstance(repaired, dict):
                     return repaired
+            except ImportError:
+                logger.warning("json_repair module not installed, skipping fallback repair.")
             except Exception as exc:
                 logger.error("Failed to repair malformed JSON. Raw response: %s", clean_res)
                 logger.exception("JSON repair failure.")

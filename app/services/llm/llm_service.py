@@ -241,6 +241,17 @@ class LLMService:
 
         return self.gemini.vision_completion(base64_image, ocr_text)
 
+    def targeted_reextraction(
+        self,
+        base64_image: str,
+        missing_fields: list[str],
+        ocr_text: str = "",
+    ) -> dict:
+        """
+        Perform a targeted second pass LLM call focusing strictly on missing mandatory fields.
+        """
+        return self.gemini.targeted_reextraction(base64_image, missing_fields, ocr_text=ocr_text)
+
     # ==========================================================
     # Text-Based Extraction
     # ==========================================================

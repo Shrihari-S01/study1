@@ -103,6 +103,9 @@ class DatabaseService:
         from datetime import datetime
 
         if isinstance(auction, dict):
+            logger.info("=== DEBUG LOG [1/3] Raw LLM JSON ===")
+            logger.info("%s", auction)
+            
             # Create a dictionary for the DB model using the incoming parsed fields
             db_data = {}
             for col in Auction.__table__.columns:
@@ -129,11 +132,8 @@ class DatabaseService:
             if not db_data.get("auction_type") and auction.get("auction_type"):
                 db_data["auction_type"] = auction["auction_type"]
 
-            if not db_data.get("assets_location") and auction.get("assets_location"):
-                db_data["assets_location"] = auction["assets_location"]
-
-            if not db_data.get("assets_location") and auction.get("property_address"):
-                db_data["assets_location"] = auction["property_address"]
+            if not db_data.get("assets_location"):
+                db_data["assets_location"] = auction.get("assets_location") or auction.get("property_address") or auction.get("address") or auction.get("location") or ""
 
             # Explicitly parse and clean decimal fields to avoid DB crash
             for field in ["auction_start_price", "emd_amount", "increment_price", "full_payment_balance", "start_floor_price"]:
@@ -269,9 +269,17 @@ class DatabaseService:
                                 continue
 
             # Parse catalogue_view_date from auction dict / notice publication date
-            raw_cat = auction.get("catalogue_view_date") or auction.get("notice_date") or auction.get("publication_date")
+            raw_cat = (
+                auction.get("catalogue_view_date") or 
+                auction.get("sale_notice_date") or 
+                auction.get("notice_date") or 
+                auction.get("publication_date") or 
+                auction.get("date") or 
+                auction.get("place_and_date")
+            )
             if raw_cat and str(raw_cat).strip() not in ("", "None", "null"):
                 db_data["catalogue_view_date"] = str(raw_cat).strip()
+                db_data["sale_notice_date"] = str(raw_cat).strip()
 
             # Check if explicit inspection schedule was provided in the raw notice
             raw_insp = auction.get("inspection_schedule_from") or auction.get("inspection_schedule_from_date") or auction.get("inspection_from_date")
@@ -282,15 +290,22 @@ class DatabaseService:
 
             # Only parse inspection date if document contains explicit inspection keywords and date is distinct from notice date
             raw_txt = str(auction).lower()
-            has_insp_kw = any(kw in raw_txt for kw in ["inspection", "site visit", "visit date", "material inspection"])
+            has_insp_kw = any(kw in raw_txt for kw in ["inspection", "property inspection", "site visit", "inspection schedule", "inspection date", "material inspection", "viewing"])
 
-            if has_insp_kw and raw_insp and str(raw_insp).strip() not in ("", "None", "null"):
-                if not raw_cat or str(raw_insp).strip() != str(raw_cat).strip():
-                    try:
-                        import dateutil.parser
-                        db_data["inspection_from_date"] = dateutil.parser.parse(str(raw_insp))
-                    except Exception:
-                        pass
+            if raw_insp and str(raw_insp).strip() not in ("", "None", "null"):
+                try:
+                    import dateutil.parser
+                    db_data["inspection_from_date"] = dateutil.parser.parse(str(raw_insp))
+                except Exception:
+                    pass
+
+            raw_insp_to = auction.get("inspection_schedule_to") or auction.get("inspection_schedule_to_date") or auction.get("inspection_to_date")
+            if raw_insp_to and str(raw_insp_to).strip() not in ("", "None", "null"):
+                try:
+                    import dateutil.parser
+                    db_data["inspection_to_date"] = dateutil.parser.parse(str(raw_insp_to))
+                except Exception:
+                    pass
 
             # Timeline logical date alignment
             # 1. Force year to 2026 for all auction timeline dates (to prevent matching 2020 or other years)
@@ -371,6 +386,10 @@ class DatabaseService:
             # Extract only keys matching Auction model column attributes
             valid_keys = {c.key for c in Auction.__table__.columns}
             filtered_auction = {k: v for k, v in db_data.items() if k in valid_keys}
+            
+            logger.info("=== DEBUG LOG [2/3] Normalized DB Data ===")
+            logger.info("%s", filtered_auction)
+            
             auction = Auction(**filtered_auction)
 
         return await self.auction_repository.create(auction)
