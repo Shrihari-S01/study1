@@ -127,9 +127,13 @@ class LLMService:
 
             system_instruction = (
                 "You are a highly defensive, zero-tolerance data-extraction vision pipeline specialized in structural document intelligence. You process highly diverse Indian bank auction notices, asset disposal catalogues, regulatory public announcements, and internal digital admin forms. Your primary directive is 100% data fidelity. You must never invent, assume, approximate, or hallucinate any data point.\n\n"
-                "### CRITICAL ADAPTABILITY & STRUCTURAL PARSING RULES:\n"
-                "1. UNIVERSAL LAYOUT AGNOSTICISM: Treat every input as structurally unique. Inputs range from messy, unstructured newspaper columns and multi-page PDF tables to highly structured web portal forms with dropdowns and text boxes. Parse the text dynamically based on spatial proximity, field labels, and visual alignment.\n"
-                "2. RIGOROUS DECOMPOSITION: When data entities (such as multi-party names or combined address blocks) are densely packed, map out the semantic transitions perfectly. Dissect these strings cleanly into their unique JSON fields.\n"
+                "### CRITICAL IN-DEPTH MULTI-AUCTION OBJECT COUNT & SPATIAL ISOLATION RULES:\n"
+                "0. IN-DEPTH DOCUMENT SCANNING & COUNTING (CRITICAL): First, perform an exhaustive, pixel-by-pixel spatial analysis of the entire document to detect and count EVERY individual auction lot, property entry, serial number block, or tabular row (whether there are 2, 6, 13, 20, or more auctions on the single image/page).\n"
+                "1. NO-SKIP & EXACT OBJECT INSTANTIATION: If the document contains 13 auctions, you MUST generate exactly 13 distinct object blocks inside the 'auctions' array. Never consolidate separate property lots into a single item, and NEVER skip or omit any auction entry, no matter how small or densely packed.\n"
+                "2. SPATIAL BOUNDARY ISOLATION: Extract each auction's data fields strictly from that specific auction's distinct spatial section/boundary on the page. Do NOT bleed or mix reserve prices, EMD amounts, addresses, or borrower names across neighboring rows or adjacent table columns.\n"
+                "3. UNIQUE OBJECT IDENTIFICATION ('auction_no'): Every single auction object inside the 'auctions' array MUST be assigned a unique 'auction_no' string (e.g., '1', '2', '3', ..., '13' or 'Lot 1', 'Lot 2'). This unique identifier isolates the object spatially and is used by the system for targeted retry/re-search passes if any field is missing.\n"
+                "4. UNIVERSAL LAYOUT AGNOSTICISM: Treat every input as structurally unique. Inputs range from messy, unstructured newspaper columns and multi-page PDF tables to highly structured web portal forms with dropdowns and text boxes. Parse the text dynamically based on spatial proximity, field labels, and visual alignment.\n"
+                "5. RIGOROUS DECOMPOSITION: When data entities (such as multi-party names or combined address blocks) are densely packed, map out the semantic transitions perfectly. Dissect these strings cleanly into their unique JSON fields.\n\n"
                 "3. MULTI-ENTITY ARRAY SEQUENCING (CRITICAL): Do NOT map table rows 1-to-1 to JSON objects. If multiple items listed under a single table row or block are collectively auctioned (such as a plant & machinery list of 12 items collectively auctioned as a single lot), extract them as a single auction object using the combined total reserve price (e.g. 39177800) and combined total EMD (e.g. 3917780). Otherwise, if a single table row or section lists multiple separate properties with their own individual reserve prices (e.g. 'Property No. 1' and 'Property No. 2' having separate prices), you MUST generate a SEPARATE object in the 'auctions' list/array for each property/asset. Label their auction_no fields with suffixes (e.g., '2a' and '2b' or '2.1' and '2.2'). For example, you must generate one object for Property No. 1 (with reserve_price 30504500 and emd_amount 3050450, labeled auction_no '2a') and a second object for Property No. 2 (with reserve_price 42469000 and emd_amount 4246900, labeled auction_no '2b'). Never group multiple separate reserve prices or combine separate properties into a single object. Each property/asset must have its own unique auction object in the list.\n"
                 "4. TABULAR HORIZONTAL ALIGNMENT: When notices are printed in table format, strictly align fields horizontally. Do not mix property addresses, EMD amounts, or reserve prices across different rows. Ensure a cell's extracted data corresponds exactly to the row's identifier/borrower.\n"
                 "5. MULTI-COLUMN NOTICE PAGES (CRITICAL): Some notice pages are printed in a multi-column format (e.g. left column and right column side-by-side). You MUST read both columns from top to bottom. Visually identify every single serial number block (which may have OCR spelling variations like 'Sl.No.', 'SI.No.', 'S1.No.', 'S.No.') in both columns, and generate a SEPARATE object in the 'auctions' array for each serial number (e.g., Sl.No.1, SI.No.2, SI.No.3, SI.No.4, SI.No.5, SI.No.6). Never omit any columns or skip sections on the right/left side of the page.\n\n"
@@ -206,29 +210,11 @@ class LLMService:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.openai_key}"
+                "Authorization": f"Bearer {self.openai_key}",
+                "Connection": "close"
             }
 
-            max_retries = 3
-            for attempt in range(max_retries + 1):
-                try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=60)
-                    if response.status_code == 429 and attempt < max_retries:
-                        logger.warning("OpenAI API rate limit hit (429). Retrying in 10 seconds...")
-                        import time
-                        time.sleep(10)
-                        continue
-                    if response.status_code != 200:
-                        logger.error("OpenAI API request failed: %d - %s", response.status_code, response.text)
-                        raise RuntimeError(f"OpenAI API returned error status {response.status_code}: {response.text}")
-                    break
-                except requests.exceptions.RequestException as exc:
-                    if attempt < max_retries:
-                        logger.warning("OpenAI network request failed: %s. Retrying in 5 seconds...", exc)
-                        import time
-                        time.sleep(5)
-                        continue
-                    raise exc
+            response = self._post_with_retry(url, payload, headers, timeout=120, max_retries=5)
 
             try:
                 res_data = response.json()
@@ -241,22 +227,170 @@ class LLMService:
 
         return self.gemini.vision_completion(base64_image, ocr_text)
 
+    def _post_with_retry(
+        self,
+        url: str,
+        payload: dict,
+        headers: dict,
+        timeout: int = 120,
+        max_retries: int = 5,
+    ) -> requests.Response:
+        """
+        Execute HTTPS POST request with robust SSL/connection retry logic and exponential backoff.
+        """
+        import time
+
+        req_headers = dict(headers)
+        req_headers.setdefault("Connection", "close")
+
+        last_exception = None
+
+        for attempt in range(1, max_retries + 1):
+            session = requests.Session()
+            try:
+                logger.info("Executing OpenAI API request (attempt %d/%d)...", attempt, max_retries)
+                response = session.post(url, json=payload, headers=req_headers, timeout=timeout)
+
+                if response.status_code == 429:
+                    retry_after = 5 * attempt
+                    logger.warning("OpenAI API rate limit hit (429). Retrying in %d seconds (attempt %d/%d)...", retry_after, attempt, max_retries)
+                    time.sleep(retry_after)
+                    continue
+
+                if response.status_code >= 500:
+                    logger.warning("OpenAI server error (%d). Retrying in %d seconds (attempt %d/%d)...", response.status_code, 3 * attempt, attempt, max_retries)
+                    time.sleep(3 * attempt)
+                    continue
+
+                if response.status_code != 200:
+                    logger.error("OpenAI API request failed: %d - %s", response.status_code, response.text)
+                    raise RuntimeError(f"OpenAI API returned error status {response.status_code}: {response.text}")
+
+                return response
+
+            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.RequestException) as exc:
+                last_exception = exc
+                retry_delay = 3 * attempt
+                logger.warning(
+                    "OpenAI network/SSL request attempt %d/%d failed with error (%s). Retrying in %d seconds...",
+                    attempt, max_retries, exc, retry_delay
+                )
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+            finally:
+                session.close()
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError("OpenAI request failed after maximum retries.")
+
     def targeted_reextraction(
         self,
         base64_image: str,
-        missing_fields: list[str],
+        missing_fields: list[str] | None = None,
         ocr_text: str = "",
+        common_missing: list[str] | None = None,
+        auctions_missing: list[dict] | None = None,
     ) -> dict:
         """
-        Perform a targeted second pass LLM call focusing strictly on missing mandatory fields.
+        Perform a targeted re-extraction LLM call focusing strictly on missing/null fields per auction object.
         """
+        if missing_fields and not common_missing:
+            common_missing = missing_fields
+
+        common_missing = common_missing or []
+        auctions_missing = auctions_missing or []
+
+        if not common_missing and not auctions_missing:
+            return {}
+
+        if self.provider == "openai":
+            logger.info(
+                "Calling OpenAI API for targeted per-object re-extraction. Common missing: %s, Auction objects missing: %s",
+                common_missing, len(auctions_missing)
+            )
+            url = "https://api.openai.com/v1/chat/completions"
+
+            system_instruction = (
+                "You are an expert structural document intelligence assistant specialized in re-scanning bank auction notices for missing fields.\n"
+                "Your directive is to re-examine the document image and OCR text to find exact missing values for document-wide common fields and specific auction objects.\n\n"
+                "### RE-EXTRACTION RULES:\n"
+                "1. SPATIAL OBJECT ISOLATION: For each specific auction object requested (identified by its unique 'auction_no'), locate its exact spatial boundary on the page image. Extract missing values ONLY from within that specific object's space.\n"
+                "2. NO HALLUCINATION / BLEED: Never copy values from neighbor objects or adjacent table rows. If a field is truly absent, set its value to \"\".\n"
+                "3. OUTPUT FORMAT: Return exclusively a RAW JSON payload structured as:\n"
+                "{\n"
+                '  "common_fields": { "field_name": "extracted_value" },\n'
+                '  "auctions": [\n'
+                '     { "auction_no": "1", "field_name": "extracted_value" },\n'
+                '     { "auction_no": "2", "field_name": "extracted_value" }\n'
+                "  ]\n"
+                "}"
+            )
+
+            request_details = {}
+            if common_missing:
+                request_details["common_missing_fields"] = common_missing
+            if auctions_missing:
+                request_details["auctions_missing_fields"] = auctions_missing
+
+            prompt = (
+                "Re-scan the provided document image and OCR text to locate missing values for the following targeted fields:\n\n"
+                f"{json.dumps(request_details, indent=2)}\n\n"
+            )
+            if ocr_text:
+                prompt += f"<ocr_text>\n{ocr_text}\n</ocr_text>\n\n"
+
+            prompt += "Return raw JSON matching the required schema with 'common_fields' dict and 'auctions' array containing objects tagged by 'auction_no'."
+
+            payload = {
+                "model": self.openai_model,
+                "messages": [
+                    {"role": "system", "content": system_instruction},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]
+                    }
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0
+            }
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_key}",
+                "Connection": "close"
+            }
+
+            try:
+                response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=3)
+                res_data = response.json()
+                content = res_data["choices"][0]["message"]["content"]
+                return self.parse_json(content)
+            except Exception as exc:
+                logger.warning("OpenAI targeted re-extraction failed: %s", exc)
+                return {}
+
+        return self.gemini.targeted_reextraction(
+            base64_image,
+            missing_fields=missing_fields,
+            ocr_text=ocr_text,
+            common_missing=common_missing,
+            auctions_missing=auctions_missing
+        )
     def extract_pdf_catalogue(
         self,
         pdf_text: str,
     ) -> dict:
         """
         Extract structured data from PDF auction catalogue text (Pipeline B).
+        Routes query to active provider (OpenAI if set to openai, otherwise Gemini).
         """
+        if self.provider == "openai":
+            logger.info("Routing PDF Catalogue extraction query to OpenAI API.")
+            return self.extract(pdf_text)
         return self.gemini.extract_pdf_catalogue(pdf_text)
 
     # ==========================================================
@@ -311,29 +445,11 @@ class LLMService:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.openai_key}"
+                "Authorization": f"Bearer {self.openai_key}",
+                "Connection": "close"
             }
 
-            max_retries = 3
-            for attempt in range(max_retries + 1):
-                try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=60)
-                    if response.status_code == 429 and attempt < max_retries:
-                        logger.warning("OpenAI API rate limit hit (429). Retrying in 10 seconds...")
-                        import time
-                        time.sleep(10)
-                        continue
-                    if response.status_code != 200:
-                        logger.error("OpenAI API request failed: %d - %s", response.status_code, response.text)
-                        raise RuntimeError(f"OpenAI API returned error status {response.status_code}: {response.text}")
-                    break
-                except requests.exceptions.RequestException as exc:
-                    if attempt < max_retries:
-                        logger.warning("OpenAI network request failed: %s. Retrying in 5 seconds...", exc)
-                        import time
-                        time.sleep(5)
-                        continue
-                    raise exc
+            response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=4)
 
             try:
                 res_data = response.json()

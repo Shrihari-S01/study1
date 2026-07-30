@@ -196,14 +196,16 @@ class PaddleOCRService:
             }
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {openai_key}"
+                "Authorization": f"Bearer {openai_key}",
+                "Connection": "close"
             }
 
             response = None
             max_retries = 5
             for attempt in range(max_retries):
+                session = requests.Session()
                 try:
-                    response = requests.post(url, json=payload, headers=headers, timeout=120)
+                    response = session.post(url, json=payload, headers=headers, timeout=120)
                     if response.status_code == 200:
                         break
                     elif response.status_code in (503, 429) and attempt < max_retries - 1:
@@ -219,6 +221,8 @@ class PaddleOCRService:
                         time.sleep(5)
                     else:
                         raise req_exc
+                finally:
+                    session.close()
 
             if response and response.status_code == 200:
                 res_data = response.json()

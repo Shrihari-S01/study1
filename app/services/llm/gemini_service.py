@@ -32,7 +32,7 @@ class GeminiService:
             "Initializing Gemini Service."
         )
 
-        self.api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
+        self.api_key = settings.gemini_api_key or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
         self.model = settings.gemini_model or "gemini-1.5-flash"
         self.temperature = 0.0
         self.max_tokens = 4096
@@ -305,31 +305,29 @@ class GeminiService:
         system_instruction = (
             "You are a highly defensive, zero-tolerance data-extraction vision pipeline specialized in structural document intelligence. You process highly diverse Indian bank auction notices, asset disposal catalogues, regulatory public announcements, and internal digital admin forms. Your primary directive is 100% data fidelity. You must never invent, assume, approximate, or hallucinate any data point.\n\n"
             "### CRITICAL MULTI-RECORD & STRUCTURAL PARSING RULES:\n"
-            "1. MULTI-RECORD ENTRY BOUNDARY DETECTION (CRITICAL): First, scan the document to detect every independent auction entry. Look for structural boundary markers such as 'Sl.No.', 'Serial Number', 'Lot Number', 'Property Number', 'Item No.', '1.', '2.', '3.', '4.', '5.', '6.', or separate borrower blocks across all columns (left and right). Extract EVERY detected auction as an independent object inside the 'auctions' array. Do NOT merge adjacent or multi-column auction entries. For multi-entry public notices (e.g., LIC Housing Finance or Bank notices containing 6 properties/lots), you MUST return exactly as many objects in the 'auctions' array as there are independent auction entries (e.g. 6 objects for 6 lots).\n"
-            "2. GLOBAL AUCTION METADATA CLASSIFICATION & PROPAGATION:\n"
-            "   - Extract document-level metadata (E-Auction Website, Global Inspection Schedule, Last Date of Submission, Auction Start/End Date & Time, Public Notice Date/Catalogue View Date, Payment Instructions, Terms & Conditions) once into top-level JSON fields (such as 'event_and_institution_details', 'auction_mechanics_and_dates', 'emd_and_payment_details').\n"
-            "   - Shared values (like Global Catalogue View Date or Global Auction Date) apply to all auction records unless a specific auction lot defines its own local value.\n"
-            "3. CATALOGUE VIEW DATE LOGIC (IMAGE NOTICES):\n"
-            "   - Priority order:\n"
-            "     1. Explicit label 'Catalogue View Date'.\n"
-            "     2. 'DATE:', 'Date:', 'Date', 'DATED:', 'Dated:' (especially when appearing near 'PLACE:', 'Place:', 'Place').\n"
-            "     3. Footer Date near 'Authorized Officer', 'Signature', 'Place', 'Date' (e.g. Authorized Officer, Place: Chennai, Date: 30.06.2026 -> '30-06-2026').\n"
-            "   - NEVER populate Catalogue View Date from: Auction Date, Auction End Date, Inspection Date, Last Submission Date, EMD Date, Demand Notice Date, or Symbolic Possession Date.\n"
-            "   - If no explicit publication/notice date label or footer date exists, return empty string \"\".\n"
+            "0. IN-DEPTH MULTI-COLUMN & MULTI-AUCTION SCANNING (CRITICAL):\n"
+            "   - Perform an exhaustive, pixel-by-pixel spatial analysis across all columns (left, middle, right) from top to bottom.\n"
+            "   - Detect and count EVERY individual auction lot or serial number block (e.g. Sl.No.1, Sl.No.2, Sl.No.3, Sl.No.4, Sl.No.5, Sl.No.6, ... up to 20+ auctions).\n"
+            "   - If the notice image contains 6 auctions, you MUST generate exactly 6 auction objects inside the 'auctions' array.\n"
+            "   - For EVERY detected auction block, extract ALL visually present fields (borrower_name, loan_account_number, reserve_price, emd_amount, auction_description, property_address, possession_type, asset_type='immovable', asset_category='property', emd_bank_name, emd_account_no, emd_ifsc, authorized_officer_number).\n"
+            "   - NEVER skip, truncate, or return dummy/empty objects for valid auction blocks printed in the image.\n\n"
+            "1. STRICT ASSET CATEGORY & ASSET TYPE CONSTRAINTS:\n"
+            "   - asset_type: Must be strictly 'immovable' or 'movable'. For any flat, house, plot, land, shop, building, or residential/commercial real estate, set asset_type strictly to 'immovable'.\n"
+            "   - asset_category: Must be strictly one of: 'scrap', 'gold', 'vehicle', 'pearl', or 'property'. For ALL real estate, flats, houses, lands, plots, shops, buildings, or residential/commercial properties, asset_category MUST be strictly 'property'. NEVER output 'residential', 'flat', 'land', or 'house' as asset_category.\n\n"
+            "2. FOUR-CORNER CATALOGUE VIEW DATE SCANNING (CRITICAL):\n"
+            "   - Scan all four corners of the image document (top-left, top-right, bottom-left, bottom-right corners, header lines, and footer signature blocks next to Place/Authorized Officer).\n"
+            "   - Any standalone date printed with label 'Date:', 'DATE:', 'Dated:', 'DATED:', 'Date :', 'DATE :' (without conflicting prefixes like 'Auction Date', 'Inspection Date', 'EMD Date', 'Demand Notice Date', 'Possession Date') MUST be extracted into top-level 'catalogue_view_date' in standard 'DD-MM-YYYY' format (e.g. 'Date: 30.06.2026' -> '30-06-2026').\n"
+            "   - This document publication date applies globally to all auction records in the notice.\n\n"
+            "3. GLOBAL AUCTION METADATA CLASSIFICATION & PROPAGATION:\n"
+            "   - Extract document-level metadata (E-Auction Website, Global Inspection Schedule, Last Date of Submission, Auction Start/End Date & Time, Public Notice Date/Catalogue View Date, Payment Instructions, Terms & Conditions) once into top-level JSON fields.\n"
+            "   - Shared values apply to all auction records unless a specific auction lot defines its own local value.\n\n"
             "4. INSPECTION SCHEDULE LOGIC (IMAGE NOTICES):\n"
             "   - Populate 'inspection_schedule_from' and 'inspection_schedule_to' ONLY if an explicit inspection label exists in text.\n"
-            "   - Accepted labels: 'Inspection', 'Inspection Date', 'Inspection Schedule', 'Date & Time of Inspection', 'Property Inspection', 'Inspection of Property', 'Site Visit', 'Viewing Date', 'Viewing Schedule'.\n"
-            "   - The extracted date must be physically associated with one of these explicit inspection labels.\n"
-            "   - If none of these labels exist in the notice text, return empty string \"\" for both inspection fields. Do NOT infer from auction/notice/demand/possession dates.\n"
+            "   - Accepted labels: 'Inspection', 'Inspection Date', 'Inspection Schedule', 'Date & Time of Inspection', 'Property Inspection', 'Site Visit', 'Viewing Date'.\n"
             "5. EMD BANK LOGIC ('emd_bank_name'):\n"
-            "   - Priority 1: Extract explicit Beneficiary Bank / Bank field under Account Details / Payment section (e.g. Beneficiary Bank: Axis Bank -> emd_bank_name = 'Axis Bank').\n"
-            "   - Priority 2: Default to 'institution_seller' if institution_seller is a bank (e.g. Canara Bank, Bank of Baroda, State Bank of India, Indian Bank, Punjab National Bank, Union Bank of India) and no separate/conflicting payment bank is specified in payment details.\n"
+            "   - Extract explicit Beneficiary Bank / Bank field under Account Details / Payment section (e.g. Beneficiary Bank: Axis Bank -> emd_bank_name = 'Axis Bank').\n"
             "6. COMPREHENSIVE BORROWER & MULTI-PARTY EXTRACTION (CRITICAL):\n"
-            "   - Capture ALL borrowers, co-borrowers, guarantors, legal heirs, and joint account holders listed under Borrower / Borrower(s) / Guarantor(s) / Applicant(s) / Loan Account Holder sections.\n"
-            "   - Do NOT truncate after the first borrower. Do NOT omit co-borrowers or guarantors.\n"
-            "   - Concatenate all names into a single string separated by ', ' while preserving their original document order, honorifics (Mr., Mrs., Dr., M/s., Late), and initials (e.g., 'Late Mr. A, Mrs. B, Mr. C, Ms. D' or 'Mr. Ramesh Kumar, Mrs. Lakshmi Ramesh, Mr. Arun Kumar'). Deduplicate identical names.\n"
-            "7. FOOTER PUBLICATION / CATALOGUE VIEW DATE SCANNING:\n"
-            "   - Scan the bottom portion of notice pages (especially near the Authorized Officer signature block, Place: / Date:) for explicit publication date markers ('Date:', 'DATE:', 'Dated:', 'DATED:'). Extract the adjacent date into 'catalogue_view_date'."
+            "   - Capture ALL borrowers, co-borrowers, guarantors, legal heirs, and joint account holders listed under Borrower sections into borrower_name."
         )
 
         prompt = (
@@ -415,11 +413,11 @@ class GeminiService:
                 break
             except requests.exceptions.RequestException as exc:
                 exc_str = str(exc).lower()
-                if any(x in exc_str for x in ["getaddrinfo", "name resolution", "connection refused", "failed to resolve", "ssl", "eof", "timeout"]):
-                    logger.error("Critical network/SSL connection failure: %s. Aborting retries.", exc)
+                if any(x in exc_str for x in ["getaddrinfo", "name resolution", "connection refused", "failed to resolve"]):
+                    logger.error("Critical network connection failure: %s. Aborting retries.", exc)
                     raise exc
                 if attempt < max_retries:
-                    logger.warning("Network request failed: %s. Retrying in 5 seconds...", exc)
+                    logger.warning("Network request attempt %d/%d failed: %s. Retrying in 5 seconds...", attempt + 1, max_retries + 1, exc)
                     import time
                     time.sleep(5)
                     continue
@@ -452,29 +450,48 @@ class GeminiService:
     def targeted_reextraction(
         self,
         base64_image: str,
-        missing_fields: list[str],
+        missing_fields: list[str] | None = None,
         ocr_text: str = "",
+        common_missing: list[str] | None = None,
+        auctions_missing: list[dict] | None = None,
     ) -> dict:
         """
-        Perform a targeted second pass Gemini call focusing ONLY on missing mandatory fields.
+        Perform a targeted second pass Gemini call focusing strictly on missing fields per auction object.
         """
-        logger.info("Running targeted Gemini re-extraction pass for missing fields: %s", missing_fields)
+        if missing_fields and not common_missing:
+            common_missing = missing_fields
 
-        field_descriptions = []
-        if "emd_bank_name" in missing_fields:
-            field_descriptions.append("- EMD Bank Name (emd_bank_name): Search ONLY inside payment instructions (Account Name, Account Number, IFSC, NEFT/RTGS, Beneficiary Bank). Do NOT use lending bank/seller bank unless specified in payment section.")
-        if "catalogue_view_date" in missing_fields:
-            field_descriptions.append("- Catalogue View Date (catalogue_view_date): Extract explicit Catalogue View Date, Notice Date, Publication Date, Dated/Date, or Place+Date. Format 'DD-MM-YYYY'. NEVER use Auction Date or EMD Date.")
-        if "inspection_schedule_from_date" in missing_fields or "inspection_schedule_from" in missing_fields:
-            field_descriptions.append("- Inspection Schedule From Date (inspection_schedule_from_date): Extract start date ONLY if document explicitly contains 'Inspection', 'Property Inspection', 'Site Visit', 'Viewing Date', or 'Inspection Schedule'. Format 'DD-MM-YYYY'.")
-        if "inspection_schedule_to_date" in missing_fields or "inspection_schedule_to" in missing_fields:
-            field_descriptions.append("- Inspection Schedule To Date (inspection_schedule_to_date): Extract end date ONLY if document explicitly contains 'Inspection', 'Property Inspection', 'Site Visit', 'Viewing Date', or 'Inspection Schedule'. Format 'DD-MM-YYYY'.")
+        common_missing = common_missing or []
+        auctions_missing = auctions_missing or []
+
+        if not common_missing and not auctions_missing:
+            return {}
+
+        logger.info(
+            "Running targeted Gemini per-object re-extraction pass. Common missing: %s, Auction objects missing: %s",
+            common_missing, len(auctions_missing)
+        )
+
+        request_details = {}
+        if common_missing:
+            request_details["common_missing_fields"] = common_missing
+        if auctions_missing:
+            request_details["auctions_missing_fields"] = auctions_missing
 
         prompt = (
-            "Review the document image and text again. Focus exclusively on extracting ONLY these missing fields:\n"
-            + "\n".join(field_descriptions) + "\n\n"
-            "Do not return any other fields. If a field is absent in the document, return \"\".\n"
-            "Return a raw JSON object with keys: emd_bank_name, catalogue_view_date, inspection_schedule_from_date, inspection_schedule_to_date."
+            "Review the document image and OCR text again to locate missing values for the following targeted fields:\n\n"
+            f"{json.dumps(request_details, indent=2)}\n\n"
+            "CRITICAL RE-EXTRACTION RULES:\n"
+            "1. SPATIAL OBJECT ISOLATION: For each requested auction object (identified by 'auction_no'), re-examine its specific spatial section on the image. Extract missing values ONLY from within that auction object's space.\n"
+            "2. NO BLEEDING: Do NOT copy values from adjacent rows or neighbor objects. If a field is absent, set value to \"\".\n"
+            "3. RETURN FORMAT: Output a raw JSON object containing:\n"
+            "{\n"
+            '  "common_fields": { "field_name": "extracted_value" },\n'
+            '  "auctions": [\n'
+            '     { "auction_no": "1", "field_name": "extracted_value" },\n'
+            '     { "auction_no": "2", "field_name": "extracted_value" }\n'
+            "  ]\n"
+            "}"
         )
 
         if ocr_text:
@@ -498,13 +515,13 @@ class GeminiService:
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "temperature": 0.0,
-                "maxOutputTokens": 1024
+                "maxOutputTokens": 2048
             }
         }
         headers = {"Content-Type": "application/json"}
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
             if response.status_code == 200:
                 res_data = response.json()
                 candidates = res_data.get("candidates", [])
@@ -533,26 +550,189 @@ class GeminiService:
         logger.info("Calling Gemini API for Pipeline B (PDF Catalogue Text Extraction).")
 
         system_instruction = (
-            "You are a specialized structural PDF Auction Catalogue Data Extraction System.\n"
-            "You are processing a digital PDF auction catalogue that contains explicit field labels, section headers, seller details, bank details, and lot tables.\n\n"
-            "### STRICT SECTION-AWARE & EXPLICIT LABEL PARSING RULES:\n"
-            "1. SECTION 1 - AUCTION HEADER METADATA:\n"
-            "   - Extract Catalogue View Date strictly from fields explicitly labeled 'Catalogue View Date', 'Notice Date', 'Publication Date', or 'Issue Date'. Do NOT perform semantic guessing or use auction start/end dates.\n"
-            "   - Extract Inspection Schedule strictly from explicit labels 'Inspection Schedule' or 'Inspection Date'. If the value is a range (e.g., '22-07-26 to 22-07-26' or '22.07.2026 to 24.07.2026'), split into 'inspection_schedule_from' (22-07-2026) and 'inspection_schedule_to' (22-07-2026). If a single date is given, populate both fields with that date.\n"
-            "   - Extract Auction Start/End Date & Time, Auction Type, Auction Number, Auto Extension, Currency, Pre-Bid EMD, Delivery Timeline, and Full Payment Timeline.\n"
-            "2. SECTION 2 - SELLER DETAILS:\n"
-            "   - Extract Seller Name ('institution_seller'), Seller Address/Branch ('auction_office'), Seller Email ('email'), Contact Person ('authorized_officer_name'), and Telephone Number ('authorized_officer_number').\n"
-            "3. SECTION 3 - SELLER PAYMENT & BANK DETAILS:\n"
-            "   - Extract Bank Details STRICTLY from the 'Seller Account Details' or 'Payment Details' section.\n"
-            "   - Map Beneficiary Name, Bank Name ('emd_bank_name'), Branch ('branch_name'), Account Number ('emd_account_no'), and IFSC ('emd_ifsc'). Do NOT copy seller bank into emd_bank_name unless specified in the seller payment section.\n"
-            "4. SECTION 4 - LOT DETAILS (ONE JSON RECORD PER LOT):\n"
-            "   - Every 'Lot No' / 'Lot Number' starts a new independent auction record in the 'auctions' array.\n"
-            "   - Extract Lot Number ('auction_no'), Lot Name / Product Type / Description ('auction_description'), Category ('asset_category'), Quantity ('quantity'), Units ('units'), Start Price ('starting_price' / 'reserve_price'), Bid Increment ('increment_price'), Lot Location ('assets_location'), State ('state'), and Lot-Level Inspection if specified.\n"
-            "5. SHARED METADATA PROPAGATION:\n"
-            "   - Document-level header metadata (Auction Date, Submission Date, Inspection Schedule, Catalogue View Date, Seller Details, Payment Details) apply to all lot records in the 'auctions' array unless a lot specifies its own local value.\n"
-            "6. PRIORITY ORDER: 1. Explicit Field Labels, 2. Table Cell Relationships, 3. Section Headings, 4. Semantic Inference (only if label is missing).\n\n"
-            "Output exclusively RAW, VALID JSON matching the schema format below."
-        )
+    "You are an enterprise-grade Auction Catalogue PDF Extraction Engine. "
+    "Your responsibility is to extract structured auction data from complete multi-page PDF catalogues with 99% accuracy. "
+    "Never hallucinate, never guess, and never overwrite correctly extracted values.\n\n"
+
+    "=========================\n"
+    "STAGE 1 - DOCUMENT UNDERSTANDING\n"
+    "=========================\n"
+    "1. Read the ENTIRE PDF before extracting any fields.\n"
+    "2. Merge all pages into one logical document.\n"
+    "3. Build these document sections:\n"
+    "- Auction Header\n"
+    "- Seller Details\n"
+    "- Seller Account Details / Beneficiary Details / Payment Details\n"
+    "- Officer Details\n"
+    "- Lot Details\n"
+    "- Terms & Conditions\n"
+    "- Annexure\n"
+    "Never extract fields directly from random pages.\n\n"
+
+    "=========================\n"
+    "STAGE 2 - HEADER EXTRACTION\n"
+    "=========================\n"
+    "Extract only once:\n"
+    "- auction_identifier\n"
+    "- auction_no\n"
+    "- catalogue_view_date\n"
+    "- inspection_schedule\n"
+    "- auction_date_time\n"
+    "- auction_end_date_time\n"
+    "- institution_seller\n"
+    "- auction_office\n"
+    "- emd_bank_name\n"
+    "- emd_account_number\n"
+    "- emd_ifsc\n"
+    "- emd_branch\n"
+    "- auction_department\n"
+    "- authorized_officer_name\n"
+    "- authorized_officer_number\n"
+    "Propagate these values to every lot.\n\n"
+
+    "=========================\n"
+    "STAGE 3 - LOT DETECTION\n"
+    "=========================\n"
+    "Every occurrence of:\n"
+    "- Lot No\n"
+    "- Lot No -\n"
+    "- Lot Number\n"
+    "- Item No\n"
+    "starts a NEW auction object.\n"
+    "Never merge multiple lots into one object.\n"
+    "Output one JSON object for every detected lot.\n\n"
+
+    "=========================\n"
+    "STAGE 4 - LOT FIELD MAPPING\n"
+    "=========================\n"
+    "For every lot extract:\n"
+    "- lot_no\n"
+    "- lot_name\n"
+    "- product_type\n"
+    "- category\n"
+    "- quantity\n"
+    "- unit\n"
+    "- lot_location\n"
+    "- state\n"
+    "- start_price\n"
+    "- bid_increment\n"
+    "- gst\n"
+    "- tcs\n"
+    "- bid_valid_till\n\n"
+
+    "Map:\n"
+    "Lot Name -> auction_description\n"
+    "Start Price in INR -> reserve_price\n"
+    "Bid Increment in INR -> increment_price\n"
+    "Lot Location -> assets_location\n\n"
+
+    "Never replace extracted numeric values with 0 or null.\n\n"
+
+    "=========================\n"
+    "STAGE 5 - AUCTION NUMBER\n"
+    "=========================\n"
+    "Example:\n"
+    "MSTC/SRO/.../19530\n\n"
+    "auction_identifier = full string\n"
+    "auction_no = 19530\n\n"
+    "Never store company names inside auction_no.\n\n"
+
+    "=========================\n"
+    "STAGE 6 - ASSET CLASSIFICATION\n"
+    "=========================\n"
+    "Determine asset category from the CURRENT LOT only.\n"
+    "Never infer category from document header.\n"
+    "Never return 'TO BE' when Category exists.\n\n"
+
+    "Examples:\n"
+    "Iron and Steel -> Iron and Steel\n"
+    "Battery -> Battery\n"
+    "Plastic -> Plastic\n"
+    "Rubber -> Rubber\n"
+    "Electrical Items -> Electrical\n"
+    "Vehicle -> Vehicle\n"
+    "Gold -> Gold\n"
+    "Property -> Property\n\n"
+
+    "asset_type:\n"
+    "Movable for scrap, machinery, vehicle, battery, metal.\n"
+    "Immovable only for land, plot, building, house.\n\n"
+
+    "=========================\n"
+    "STAGE 7 - UNIVERSAL BANK EXTRACTION\n"
+    "=========================\n"
+    "Search these sections:\n"
+    "Seller Account Details\n"
+    "Beneficiary Details\n"
+    "Payment Details\n"
+    "Bank Details\n"
+    "Account Details\n"
+    "EMD Details\n\n"
+
+    "Map:\n"
+    "Beneficiary Name -> institution_seller\n"
+    "Bank Name -> emd_bank_name\n"
+    "Branch -> emd_branch + auction_department\n"
+    "A/c No -> emd_account_number\n"
+    "Account Number -> emd_account_number\n"
+    "IFSC -> emd_ifsc\n"
+    "IFS Code -> emd_ifsc\n\n"
+
+    "Validation:\n"
+    "Bank Name must be a bank.\n"
+    "Account Number must contain only digits.\n"
+    "IFSC must match Indian IFSC format.\n"
+    "Reject instructional paragraphs.\n\n"
+
+    "=========================\n"
+    "STAGE 8 - SELLER & OFFICER\n"
+    "=========================\n"
+    "Seller Name -> institution_seller\n"
+    "Seller Address -> auction_office\n\n"
+
+    "Authorized Officer priority:\n"
+    "Authorized Officer\n"
+    "Authorized Signatory\n"
+    "Authorized Representative\n"
+    "If none exist, use Contact Person.\n"
+    "Never use MSTC Helpdesk.\n\n"
+
+    "=========================\n"
+    "STAGE 9 - VALIDATION\n"
+    "=========================\n"
+    "Validate before output:\n"
+    "Detected Lots == Output Records\n"
+    "auction_no must be numeric\n"
+    "reserve_price > 0 if Start Price exists\n"
+    "increment_price must equal Bid Increment\n"
+    "assets_location must equal Lot Location\n"
+    "asset_category must not be 'TO BE' if Category exists\n"
+    "auction_description must equal Lot Name\n"
+    "EMD bank fields must pass validation.\n\n"
+
+    "=========================\n"
+    "STAGE 10 - HALLUCINATION PREVENTION\n"
+    "=========================\n"
+    "Never infer missing values.\n"
+    "Never fabricate bank details.\n"
+    "Never fabricate prices.\n"
+    "Never fabricate auction numbers.\n"
+    "Never overwrite regex-extracted values.\n"
+    "If a value is not explicitly present, return null.\n\n"
+
+    "Return ONLY valid JSON exactly matching the required schema."
+)
+        import sys
+        import json as json_lib
+        def safe_print(text: str):
+            try:
+                sys.stdout.write(str(text).encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8", errors="replace") + "\n")
+            except Exception:
+                pass
+
+        safe_print("\n========== FIRST 2000 CHARS OF PDF_TEXT ==========")
+        safe_print(pdf_text[:2000] if pdf_text else "[Empty PDF Text]")
+        safe_print("===================================================\n")
 
         prompt = (
             f"Extract all verified PDF auction catalogue data points exactly into the provided JSON schema structure from the text below.\n\n"
@@ -583,7 +763,17 @@ class GeminiService:
                 if candidates:
                     content_parts = candidates[0].get("content", {}).get("parts", [])
                     if content_parts:
-                        return self.parse_json(content_parts[0].get("text", ""))
+                        raw_text = content_parts[0].get("text", "")
+                        safe_print("\n========== RAW LLM RESPONSE (EXTRACT_PDF_CATALOGUE) ==========")
+                        safe_print(raw_text)
+                        safe_print("================================================================\n")
+                        parsed = self.parse_json(raw_text)
+                        safe_print("\n========== PARSED JSON OBJECT FROM RAW LLM RESPONSE ==========")
+                        safe_print(json_lib.dumps(parsed, indent=2))
+                        safe_print("================================================================\n")
+                        return parsed
+            else:
+                logger.error("Gemini API HTTP Error %d: %s", response.status_code, response.text)
         except Exception as exc:
             logger.error("PDF catalogue extraction failed: %s", exc)
 

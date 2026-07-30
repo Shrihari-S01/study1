@@ -708,6 +708,34 @@ class AuctionPipeline:
             file,
         )
 
+        # Check if input file is a PDF (Stages 1 - 18 PDF Pipeline)
+        if upload.original_file_path and upload.original_file_path.lower().endswith(".pdf"):
+            logger.info("Routing uploaded file directly to Stages 1-18 PDF Pipeline: %s", upload.original_file_path)
+            pdf_result = self.parser.process_pdf(upload.original_file_path, ocr_service=self.ocr)
+            records = pdf_result.get("records", [])
+
+            saved_records = []
+            for rec in records:
+                try:
+                    rec["upload_id"] = upload.id
+                    saved = await self.database.save_auction(rec)
+                    saved_records.append(saved)
+                except Exception:
+                    logger.exception("Unable to save PDF auction record.")
+
+            summary = {
+                "total_notices": 1,
+                "successful": 1 if saved_records else 0,
+                "failed": 0 if saved_records else 1
+            }
+
+            return {
+                "upload": upload,
+                "results": saved_records,
+                "summary": summary,
+                "extraction_results": [{"success": True, "record": records}]
+            }
+
         images = await self.prepare_images(
 
             upload.original_file_path,

@@ -143,11 +143,11 @@ class DatabaseService:
 
                 if val in (None, ""):
                     if field == "auction_start_price":
-                        val = auction.get("starting_price") or auction.get("start_floor_price") or auction.get("reserve_price")
+                        val = auction.get("starting_price") or auction.get("reserve_price") or auction.get("start_floor_price") or auction.get("auction_start_price")
                     elif field == "emd_amount":
-                        val = auction.get("pre_bid_emd") or auction.get("emd_price")
+                        val = auction.get("emd_price") or auction.get("pre_bid_emd") or auction.get("emd_amount")
                     elif field == "increment_price":
-                        val = auction.get("bid_increment")
+                        val = auction.get("increment_price") or auction.get("bid_increment")
 
                 if val not in (None, ""):
                     try:
@@ -183,26 +183,17 @@ class DatabaseService:
             if not db_data.get("emd_bank_name") and auction.get("emd_bank_name"):
                 db_data["emd_bank_name"] = auction["emd_bank_name"]
 
-            if not db_data.get("emd_bank_name"):
-                db_data["emd_bank_name"] = ""
-
-            if not db_data.get("emd_account_no") and auction.get("emd_account_no"):
-                db_data["emd_account_no"] = auction["emd_account_no"]
+            if not db_data.get("emd_account_no"):
+                db_data["emd_account_no"] = auction.get("emd_account_no") or auction.get("emd_account_number") or ""
 
             if not db_data.get("emd_ifsc"):
                 db_data["emd_ifsc"] = auction.get("emd_ifsc", "") or auction.get("ifsc", "")
 
-            if not db_data.get("authorized_officer_name") and auction.get("authorized_officer_name"):
-                db_data["authorized_officer_name"] = auction["authorized_officer_name"]
+            if not db_data.get("authorized_officer_name"):
+                db_data["authorized_officer_name"] = auction.get("authorized_officer_name") or auction.get("authorized_officer") or auction.get("contact_person") or ""
 
-            if not db_data.get("authorized_officer_name") and auction.get("authorized_officer"):
-                db_data["authorized_officer_name"] = auction["authorized_officer"]
-
-            if not db_data.get("authorized_officer_number") and auction.get("authorized_officer_number"):
-                db_data["authorized_officer_number"] = auction["authorized_officer_number"]
-
-            if not db_data.get("authorized_officer_number") and auction.get("contact_number"):
-                db_data["authorized_officer_number"] = auction["contact_number"]
+            if not db_data.get("authorized_officer_number"):
+                db_data["authorized_officer_number"] = auction.get("authorized_officer_number") or auction.get("contact_number") or auction.get("telephone_number") or ""
 
             if not db_data.get("payment_type") and auction.get("payment_type"):
                 db_data["payment_type"] = auction["payment_type"]
@@ -239,7 +230,7 @@ class DatabaseService:
 
             # Parse datetime fields
             if not db_data.get("auction_start_datetime"):
-                date_str = auction.get("auction_start_date_time") or auction.get("auction_date")
+                date_str = auction.get("auction_date_time") or auction.get("auction_start_date_time") or auction.get("auction_date")
                 if date_str:
                     try:
                         import dateutil.parser
@@ -332,8 +323,6 @@ class DatabaseService:
             if db_data.get("emd_bank_name") and "CANARA" in str(db_data.get("emd_bank_name")).upper():
                 if not db_data.get("emd_ifsc"):
                     db_data["emd_ifsc"] = "CNRB0005248"
-            if not db_data.get("authorized_officer_name"):
-                db_data["authorized_officer_name"] = "Authorized Officer"
 
             # Parse submit_application to standard string format
             date_str = db_data.get("submit_application")
@@ -386,10 +375,27 @@ class DatabaseService:
             # Extract only keys matching Auction model column attributes
             valid_keys = {c.key for c in Auction.__table__.columns}
             filtered_auction = {k: v for k, v in db_data.items() if k in valid_keys}
-            
+
+            # Enforce column length bounds on string fields to prevent MySQL 1406 DataError
+            for col in Auction.__table__.columns:
+                if col.key in filtered_auction and isinstance(filtered_auction[col.key], str):
+                    val_str = filtered_auction[col.key].strip()
+                    max_len = getattr(col.type, "length", None)
+                    if max_len and len(val_str) > max_len:
+                        filtered_auction[col.key] = val_str[:max_len].strip()
+                    else:
+                        filtered_auction[col.key] = val_str
+
+            if "digital_certificate" in filtered_auction and filtered_auction["digital_certificate"]:
+                dc_str = str(filtered_auction["digital_certificate"]).strip()
+                if "required" in dc_str.lower() or "yes" in dc_str.lower():
+                    filtered_auction["digital_certificate"] = "Required"
+                elif "not" in dc_str.lower() or "no" in dc_str.lower():
+                    filtered_auction["digital_certificate"] = "Not Required"
+
             logger.info("=== DEBUG LOG [2/3] Normalized DB Data ===")
             logger.info("%s", filtered_auction)
-            
+
             auction = Auction(**filtered_auction)
 
         return await self.auction_repository.create(auction)

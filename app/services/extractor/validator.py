@@ -36,43 +36,59 @@ class Validator:
         value: str,
     ) -> str:
         """
-        Parse raw financial strings (e.g. "Rs. 1,00,000/-" or "1.16 Crores")
+        Parse raw financial strings (e.g. "Rs. 40,00,000/-" or "37,00,000")
         into clean numeric values.
         """
         if not value:
             return ""
 
-        # Clean currency symbols, commas, spaces
-        cleaned = str(value).upper()
-        for term in ["₹", "RS.", "RS", "INR", ",", "/-"]:
+        val_str = str(value).strip()
+        if not val_str:
+            return ""
+
+        # If already a clean numeric string
+        try:
+            f_val = float(val_str)
+            if f_val > 0:
+                if f_val.is_integer():
+                    return str(int(f_val))
+                return f"{f_val:.2f}"
+        except Exception:
+            pass
+
+        cleaned = val_str.upper()
+        for term in ["₹", "RS.", "RS", "INR", "/-"]:
             cleaned = cleaned.replace(term, "")
         cleaned = cleaned.strip()
 
-        # Check for scale multipliers: Crores, Lakhs
-        multiplier = 1.0
-        if "CRORE" in cleaned or "CR" in cleaned:
-            multiplier = 10000000.0
+        has_lakh = "LAKH" in cleaned or "LAC" in cleaned or "LK" in cleaned
+        has_crore = "CRORE" in cleaned or "CR" in cleaned
+
+        if has_crore:
             cleaned = re.sub(r'CRORES?|CR\.?|CRS\.?', '', cleaned).strip()
-        elif "LAKH" in cleaned or "LK" in cleaned:
-            multiplier = 100000.0
+        elif has_lakh:
             cleaned = re.sub(r'LAKHS?|LACS?|LK\.?', '', cleaned).strip()
 
-        # Find first floating point number in the remaining string
-        num_match = re.search(r'\d+(\.\d+)?', cleaned)
+        cleaned_no_comma = cleaned.replace(",", "")
+        num_match = re.search(r'\d+(?:\.\d+)?', cleaned_no_comma)
         if num_match:
             try:
                 num = float(num_match.group(0))
-                val = num * multiplier
-                # Convert to integer string if it is a whole number, else decimal
+                if has_crore and num < 1000:
+                    val = num * 10000000.0
+                elif has_lakh and num < 1000:
+                    val = num * 100000.0
+                else:
+                    val = num
+
                 if val.is_integer():
                     return str(int(val))
                 else:
                     return f"{val:.2f}"
             except Exception:
                 pass
-        
-        # Fallback to extract only digits and decimal point
-        digits = re.sub(r'[^0-9.]', '', cleaned)
+
+        digits = re.sub(r'[^0-9.]', '', cleaned_no_comma)
         return digits
 
     # ==========================================================
@@ -125,17 +141,20 @@ class Validator:
             validated.get("possession_type", "")
         )
 
-        validated["reserve_price"] = self.validate_reserve_price(
-            validated.get("reserve_price", "")
-        )
+        val_rp = validated.get("reserve_price") or validated.get("starting_price") or ""
+        clean_rp = self.validate_reserve_price(val_rp)
+        validated["reserve_price"] = clean_rp
+        validated["starting_price"] = clean_rp
 
-        validated["emd_amount"] = self.validate_emd(
-            validated.get("emd_amount", "")
-        )
+        val_emd = validated.get("emd_price") or validated.get("emd_amount") or validated.get("pre_bid_emd") or ""
+        clean_emd = self.validate_emd(val_emd)
+        validated["emd_price"] = clean_emd
+        validated["emd_amount"] = clean_emd
 
-        validated["bid_increment"] = self.validate_bid_increment(
-            validated.get("bid_increment", "")
-        )
+        val_inc = validated.get("increment_price") or validated.get("bid_increment") or ""
+        clean_inc = self.validate_bid_increment(val_inc)
+        validated["increment_price"] = clean_inc
+        validated["bid_increment"] = clean_inc
 
 
         validated["loan_account_number"] = self.validate_loan_account(

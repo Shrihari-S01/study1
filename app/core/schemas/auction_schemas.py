@@ -16,7 +16,7 @@ def safe_print(msg: str):
 
 SCRAP_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
-    "assets_location", "starting_price", "pre_bid_emd", "increment_price", "currency",
+    "assets_location", "starting_price", "reserve_price", "pre_bid_emd", "emd_price", "increment_price", "currency",
     "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
     "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
     "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
@@ -29,7 +29,7 @@ SCRAP_FIELDS = [
 
 GOLD_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "assets_location",
-    "starting_price", "emd_price", "increment_price", "currency", "auction_date_time",
+    "starting_price", "reserve_price", "pre_bid_emd", "emd_price", "increment_price", "currency", "auction_date_time",
     "auction_end_date_time", "auto_extension", "auto_extension_mode", "auction_extend_time",
     "auction_live_status", "first_bid_acceptance_condition", "inspection_schedule_from_date",
     "inspection_schedule_to_date", "submit_application", "emd_bank_name", "emd_account_number",
@@ -42,7 +42,7 @@ GOLD_FIELDS = [
 
 VEHICLE_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
-    "assets_location", "starting_price", "emd_price", "increment_price", "currency",
+    "assets_location", "starting_price", "reserve_price", "pre_bid_emd", "emd_price", "increment_price", "currency",
     "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
     "auction_extend_time", "auction_live_status", "inspection_schedule_from_date",
     "inspection_schedule_to_date", "submit_application", "emd_bank_name", "emd_account_number",
@@ -54,7 +54,7 @@ VEHICLE_FIELDS = [
 
 PEARL_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
-    "assets_location", "starting_price", "emd_price", "increment_price", "currency",
+    "assets_location", "starting_price", "reserve_price", "pre_bid_emd", "emd_price", "increment_price", "currency",
     "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
     "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
     "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
@@ -64,7 +64,7 @@ PEARL_FIELDS = [
 
 PROPERTY_FIELDS = [
     "asset_type", "asset_category", "auction_no", "auction_description", "auction_type",
-    "assets_location", "reserve_price", "emd_price", "increment_price", "currency",
+    "assets_location", "starting_price", "reserve_price", "pre_bid_emd", "emd_price", "increment_price", "currency",
     "auction_date_time", "auction_end_date_time", "auto_extension", "auto_extension_mode",
     "auction_extend_time", "auction_live_status", "first_bid_acceptance_condition",
     "inspection_schedule_from_date", "inspection_schedule_to_date", "submit_application",
@@ -140,14 +140,14 @@ def build_pipeline_response(result: dict) -> dict:
             asset_type_val = str(db_dict.get("asset_type") or "").lower()
             
             # Standardize asset_type
-            if "immovable" in asset_type_val:
+            if "immovable" in asset_type_val or category in ("property", "residential", "commercial", "industrial", "land", "flat", "house", "building", "plot", "real estate"):
                 asset_type_normalized = "Immovable"
             elif "movable" in asset_type_val:
                 asset_type_normalized = "Movable"
             else:
                 asset_type_normalized = None
 
-            # Select category schema
+            # Select category schema (Property / Immovable defaults to PROPERTY_SCHEMA)
             if category == "scrap":
                 schema_fields = SCRAP_FIELDS
                 schema_name = "SCRAP_SCHEMA"
@@ -160,12 +160,13 @@ def build_pipeline_response(result: dict) -> dict:
             elif category == "pearl":
                 schema_fields = PEARL_FIELDS
                 schema_name = "PEARL_SCHEMA"
-            elif category == "property":
+            elif category in ("property", "residential", "commercial", "industrial", "land", "flat", "house", "building", "plot", "real estate") or asset_type_normalized == "Immovable":
                 schema_fields = PROPERTY_FIELDS
                 schema_name = "PROPERTY_SCHEMA"
             else:
-                schema_fields = PROPERTY_FIELDS
-                schema_name = "PROPERTY_SCHEMA"
+                # Default Movable assets to SCRAP_SCHEMA (Movable category) instead of PROPERTY_SCHEMA
+                schema_fields = SCRAP_FIELDS
+                schema_name = "SCRAP_SCHEMA"
 
             # Step 4: Log category schema selection
             import sys
@@ -185,7 +186,15 @@ def build_pipeline_response(result: dict) -> dict:
 
             record_dict["asset_type"] = asset_type_normalized
             record_dict["asset_category"] = category or None
-            record_dict["auction_no"] = db_dict.get("auction_no") or None
+
+            # Sanitize auction_no: Never allow Seller Name to populate auction_no
+            raw_auc_no = str(db_dict.get("auction_no") or "").strip()
+            seller_str = str(db_dict.get("institution_seller") or "").strip()
+            if raw_auc_no and (len(raw_auc_no) > 15 or (seller_str and raw_auc_no.lower() in seller_str.lower())):
+                record_dict["auction_no"] = str(db_dict.get("lot_no") or "1")
+            else:
+                record_dict["auction_no"] = raw_auc_no or str(db_dict.get("lot_no") or "") or None
+
             record_dict["auction_description"] = db_dict.get("auction_description") or None
             raw_loc = None
             if raw_extract and isinstance(raw_extract, dict):
@@ -207,7 +216,7 @@ def build_pipeline_response(result: dict) -> dict:
             if "auction_office" in record_dict:
                 record_dict["auction_office"] = db_dict.get("auction_office") or db_dict.get("auction_office_department") or db_dict.get("branch_name") or None
             if "auction_department" in record_dict:
-                record_dict["auction_department"] = db_dict.get("auction_department") or db_dict.get("auction_office_department") or db_dict.get("branch_name") or None
+                record_dict["auction_department"] = db_dict.get("auction_department") or db_dict.get("auction_office_department") or None
 
             # Borrower mapping
             bor_val = db_dict.get("borrower") or db_dict.get("borrower_name") or None
@@ -229,11 +238,11 @@ def build_pipeline_response(result: dict) -> dict:
                         if not emd_ifsc_val:
                             emd_ifsc_val = item.get("emd_ifsc") or item.get("ifsc")
 
-            # Rule 1: Priority 2 - Default to institution_seller if seller is a bank and no separate payment bank is found
+            # Priority 2 - Default to institution_seller if seller is a bank and no separate payment bank is found
             if not emd_bank and bank_val:
-                seller_str = str(bank_val).strip()
-                if "bank" in seller_str.lower():
-                    emd_bank = seller_str
+                seller_s = str(bank_val).strip()
+                if "bank" in seller_s.lower():
+                    emd_bank = seller_s
 
             if "emd_bank_name" in record_dict:
                 record_dict["emd_bank_name"] = emd_bank or None
@@ -243,30 +252,16 @@ def build_pipeline_response(result: dict) -> dict:
                 record_dict["emd_ifsc"] = emd_ifsc_val or None
 
             # Numeric price conversions (do not default missing values to 0)
-            starting_price_val = clean_numeric(db_dict.get("auction_start_price"))
-            if "starting_price" in record_dict:
-                record_dict["starting_price"] = starting_price_val
-            if "reserve_price" in record_dict:
-                record_dict["reserve_price"] = starting_price_val
+            reserve_val = clean_numeric(db_dict.get("reserve_price") or db_dict.get("starting_price") or db_dict.get("auction_start_price"))
+            record_dict["starting_price"] = reserve_val
+            record_dict["reserve_price"] = reserve_val
 
-            if "start_floor_price" in record_dict:
-                sf_price = clean_numeric(db_dict.get("start_floor_price"))
-                raw_sf = None
-                if raw_extract:
-                    raw_sf = raw_extract.get("start_floor_price") or raw_extract.get("starting_price") or raw_extract.get("start_floor")
-                if raw_sf in (None, ""):
-                    record_dict["start_floor_price"] = None
-                else:
-                    record_dict["start_floor_price"] = sf_price
+            emd_val = clean_numeric(db_dict.get("emd_price") or db_dict.get("emd_amount") or db_dict.get("pre_bid_emd"))
+            record_dict["pre_bid_emd"] = emd_val
+            record_dict["emd_price"] = emd_val
 
-            emd_price_val = clean_numeric(db_dict.get("emd_amount"))
-            if "pre_bid_emd" in record_dict:
-                record_dict["pre_bid_emd"] = emd_price_val
-            if "emd_price" in record_dict:
-                record_dict["emd_price"] = emd_price_val
-
-            if "increment_price" in record_dict:
-                record_dict["increment_price"] = clean_numeric(db_dict.get("increment_price"))
+            inc_val = clean_numeric(db_dict.get("increment_price") or db_dict.get("bid_increment"))
+            record_dict["increment_price"] = inc_val
 
             record_dict["currency"] = db_dict.get("currency") or "INR"
 

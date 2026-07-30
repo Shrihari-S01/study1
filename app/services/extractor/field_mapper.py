@@ -64,9 +64,13 @@ class FieldMapper:
 
             "reserve_price": "reserve_price",
 
-            "emd_amount": "emd_amount",
+            "emd_price": "emd_price",
 
-            "bid_increment": "bid_increment",
+            "emd_amount": "emd_price",
+
+            "increment_price": "increment_price",
+
+            "bid_increment": "increment_price",
 
             "auction_date": "auction_date",
 
@@ -378,11 +382,15 @@ class FieldMapper:
             "contact": "contact_number",
 
             "officer": "authorized_officer",
-            "pre_bid_emd": "emd_amount",
-            "emd_price": "emd_amount",
-            "starting_price": "auction_start_price",
-            "start_floor_price": "auction_start_price",
-            "reserve_price": "auction_start_price",
+            "pre_bid_emd": "emd_price",
+            "emd_amount": "emd_price",
+            "emd_price": "emd_price",
+            "starting_price": "reserve_price",
+            "start_floor_price": "reserve_price",
+            "reserve_price": "reserve_price",
+            "reserve_amount": "reserve_price",
+            "increment_price": "increment_price",
+            "bid_increment": "increment_price",
             "emd_account_number": "emd_account_no",
             "registration_number": "reg_no",
             "rc_number": "rc",
