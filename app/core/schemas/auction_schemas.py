@@ -488,11 +488,18 @@ def build_pipeline_response(result: dict) -> dict:
                 ext_time = db_dict.get("auction_extend_time")
                 raw_ext_val = None
                 if raw_extract:
-                    raw_ext_val = raw_extract.get("auction_extend_time") or raw_extract.get("auction_extend_time_mins")
-                if raw_ext_val in (None, ""):
+                    raw_ext_val = raw_extract.get("auction_extend_time") if raw_extract.get("auction_extend_time") is not None else raw_extract.get("auction_extend_time_mins")
+                if raw_ext_val in (None, "") and ext_time in (None, ""):
                     record_dict["auction_extend_time"] = None
                 else:
-                    record_dict["auction_extend_time"] = ext_time
+                    val_to_use = ext_time if ext_time is not None else raw_ext_val
+                    if isinstance(val_to_use, (int, float)):
+                        record_dict["auction_extend_time"] = int(val_to_use)
+                    elif isinstance(val_to_use, str):
+                        digits = re.findall(r'\d+', val_to_use)
+                        record_dict["auction_extend_time"] = int(digits[0]) if digits else None
+                    else:
+                        record_dict["auction_extend_time"] = None
 
             # Remarks
             if "remarks" in record_dict:

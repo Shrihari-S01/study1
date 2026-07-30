@@ -222,11 +222,16 @@ class DatabaseService:
                 else:
                     db_data["auto_extension"] = bool(val)
 
-            if not db_data.get("auction_extend_time") and auction.get("auction_extend_time_mins"):
+            if db_data.get("auction_extend_time") is None and (auction.get("auction_extend_time") is not None or auction.get("auction_extend_time_mins") is not None):
                 try:
-                    db_data["auction_extend_time"] = int(auction["auction_extend_time_mins"])
+                    raw_val = auction.get("auction_extend_time") if auction.get("auction_extend_time") is not None else auction.get("auction_extend_time_mins")
+                    digits = re.findall(r'\d+', str(raw_val))
+                    if digits:
+                        db_data["auction_extend_time"] = int(digits[0])
+                    else:
+                        db_data["auction_extend_time"] = int(raw_val)
                 except Exception:
-                    db_data["auction_extend_time"] = 0
+                    db_data["auction_extend_time"] = None
 
             # Parse datetime fields
             if not db_data.get("auction_start_datetime"):

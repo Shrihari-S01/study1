@@ -88,7 +88,7 @@ class PDFPipeline:
         sections = self.section_detector.detect_sections(doc_obj)
 
         # Stage 8: Header, Seller, Bank Parsers
-        header_data = self.header_parser.parse_header(sections.get("header", ""))
+        header_data = self.header_parser.parse_header(sections.get("header", ""), full_pdf_text=full_text)
         seller_data = self.seller_parser.parse_seller(sections.get("seller", ""))
         bank_data = self.bank_parser.parse_bank(sections.get("bank", ""), full_pdf_text=full_text)
         officer_data = self.officer_parser.parse_officer(sections.get("officer", ""))
@@ -186,6 +186,8 @@ class PDFPipeline:
                 "catalogue_view_date": shared_metadata.get("catalogue_view_date"),
                 "auction_date_time": shared_metadata.get("auction_date_time"),
                 "auction_end_date_time": shared_metadata.get("auction_end_date_time"),
+                "auto_extension": shared_metadata.get("auto_extension"),
+                "auction_extend_time": shared_metadata.get("auction_extend_time"),
                 "inspection_schedule_from_date": shared_metadata.get("inspection_schedule_from_date"),
                 "inspection_schedule_to_date": shared_metadata.get("inspection_schedule_to_date"),
                 "institution_seller": shared_metadata.get("institution_seller"),

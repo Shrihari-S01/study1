@@ -66,6 +66,8 @@ class FieldMapper:
         mapped["inspection_schedule_to_date"] = normalized_record.get("inspection_schedule_to_date")
         mapped["auction_date_time"] = normalized_record.get("auction_date_time")
         mapped["auction_end_date_time"] = normalized_record.get("auction_end_date_time")
+        mapped["auto_extension"] = normalized_record.get("auto_extension")
+        mapped["auction_extend_time"] = normalized_record.get("auction_extend_time")
         mapped["currency"] = normalized_record.get("currency") or "INR"
 
         return mapped

@@ -21,7 +21,7 @@ class HeaderParser:
     Extracts shared notice metadata from the Header section.
     """
 
-    def parse_header(self, text: str) -> dict:
+    def parse_header(self, text: str, full_pdf_text: str = "") -> dict:
         """
         Extract shared metadata dict.
         """
@@ -37,10 +37,11 @@ class HeaderParser:
             "pre_bid_emd_amount": None,
             "currency": "INR",
             "auction_type": "Forward",
-            "auto_extension": None
+            "auto_extension": None,
+            "auction_extend_time": None
         }
 
-        if not text:
+        if not text and not full_pdf_text:
             return shared
 
         # 1. Multi-line Auction Identifier & Numeric Auction Number
@@ -155,17 +156,62 @@ class HeaderParser:
             except Exception:
                 pass
 
-        # 7. Auto-extension Time
-        ext_m = re.search(r'(?i)Auction\s+Auto-extension\s+Time\s*[:.-]?\s*([^\n]+)', text)
+        # 7. Auto-extension Time Extraction, Normalization & Validation
+        # Required Mapping Labels:
+        # - Auction Auto-extension Time
+        # - Auction Auto Extension Time
+        # - Auto Extension Time
+        # - Auto-extension Time
+        # - Extension Time
+        # - Auction Extend Time
+        search_ext_text = text or ""
+        ext_label_pattern = r'(?i)(?:Auction\s+Auto[- ]extension\s+Time|Auto[- ]extension\s+Time|Extension\s+Time|Auction\s+Extend\s+Time)'
+        val_pattern = r'(?i)(?:Auction\s+Auto[- ]extension\s+Time|Auto[- ]extension\s+Time|Extension\s+Time|Auction\s+Extend\s+Time)\s*[:.-]?[\s\n\r]*([^\n\r]+)'
+
+        if full_pdf_text and not re.search(ext_label_pattern, search_ext_text):
+            search_ext_text = full_pdf_text
+
+        ext_label_exists = bool(re.search(ext_label_pattern, search_ext_text))
+        ext_m = re.search(val_pattern, search_ext_text)
+
+        raw_ext_val = None
         if ext_m:
-            shared["auto_extension"] = ext_m.group(1).strip()
+            raw_ext_val = ext_m.group(1).strip()
+            digits = re.findall(r'\d+', raw_ext_val)
+            if digits:
+                shared["auction_extend_time"] = int(digits[0])
+                shared["auto_extension"] = "Yes"
+
+        # Runtime Debug Logs
+        if ext_label_exists:
+            safe_print("\n=== AUTO EXTENSION PARSER ===")
+            safe_print(f"Label Found:\nYES\n")
+            if raw_ext_val:
+                safe_print(f"Raw Value:\n{raw_ext_val}\n")
+            if shared.get("auction_extend_time") is not None:
+                safe_print(f"Normalized:\n{shared.get('auction_extend_time')}\n")
+                safe_print(f"Mapped Field:\nauction_extend_time\n")
+                safe_print("Status:\nPASS\n")
+            else:
+                safe_print(f"Mapped Field:\nNULL\n")
+                safe_print("Status:\nFAIL\n")
+
+            if shared.get("auction_extend_time") is None:
+                err_msg = (
+                    "AUTO EXTENSION PARSER ERROR\n\n"
+                    "Label Found:\nYES\n\n"
+                    "Value Extracted:\nNO\n\n"
+                    "Field:\nauction_extend_time"
+                )
+                logger.error(err_msg)
+                raise ValueError(err_msg)
 
         # 8. Currency
         curr_m = re.search(r'(?i)Currency\s*[:.-]?\s*([A-Z]{3})', text)
         if curr_m:
             shared["currency"] = curr_m.group(1).strip()
 
-        logger.info("Header Metadata Extracted cleanly (Auction Ident: %s, Auction No: %s, Location: %s, View Date: %s).",
-                    shared.get("auction_identifier"), shared.get("auction_no"), shared.get("assets_location"), shared.get("catalogue_view_date"))
+        logger.info("Header Metadata Extracted cleanly (Auction Ident: %s, Auction No: %s, Location: %s, View Date: %s, Extend Time: %s).",
+                    shared.get("auction_identifier"), shared.get("auction_no"), shared.get("assets_location"), shared.get("catalogue_view_date"), shared.get("auction_extend_time"))
 
         return shared
