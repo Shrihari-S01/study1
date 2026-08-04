@@ -24,7 +24,6 @@ from app.schemas.response import APIResponse
 from app.services.pipeline import AuctionPipeline
 
 router = APIRouter(
-    prefix="/upload",
     tags=["Upload"],
 )
 
@@ -194,66 +193,4 @@ async def upload_document(
 
         )
 
-
-# ==========================================================
-# Upload Health
-# ==========================================================
-
-@router.get(
-    "/health",
-    response_model=APIResponse,
-    summary="Upload Service Health",
-)
-async def upload_health(
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Upload service health.
-    """
-
-    pipeline = AuctionPipeline(
-        db,
-    )
-
-    health = await pipeline.health_check()
-
-    return APIResponse(
-
-        success=True,
-
-        message="Upload service is healthy.",
-
-        data=health,
-
-    )
-
-
-# ==========================================================
-# Upload Service Information
-# ==========================================================
-
-@router.get(
-    "/info",
-    response_model=APIResponse,
-    summary="Upload Service Information",
-)
-async def upload_info(
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Upload service information.
-    """
-
-    pipeline = AuctionPipeline(
-        db,
-    )
-
-    return APIResponse(
-
-        success=True,
-
-        message="Upload service information.",
-
-        data=pipeline.info(),
-
-    )
+

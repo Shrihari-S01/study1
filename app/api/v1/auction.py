@@ -21,7 +21,6 @@ from app.schemas.response import APIResponse
 from app.services.storage.database_service import DatabaseService
 
 router = APIRouter(
-    prefix="/auction",
     tags=["Auction"],
 )
 
@@ -163,49 +162,7 @@ async def auction_count(
         )
 
 
-# ==========================================================
-# Auction Service Health
-# ==========================================================
 
-@router.get(
-    "/health",
-    response_model=APIResponse,
-    summary="Auction Service Health",
-)
-async def auction_health(
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Auction service health.
-    """
-
-    try:
-
-        database = DatabaseService(
-            db,
-        )
-
-        health = await database.health_check()
-
-        return APIResponse(
-
-            success=True,
-
-            message="Auction service is healthy.",
-
-            data=health,
-
-        )
-
-    except Exception as exc:
-
-        raise HTTPException(
-
-            status_code=500,
-
-            detail=str(exc),
-
-        )
 
 
 # ==========================================================

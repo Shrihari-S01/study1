@@ -750,7 +750,7 @@
             formData.append('file', file);
 
             // Fetch to backend upload endpoint
-            const uploadUrl = currentMode === 'single' ? '/api/v1/upload/upload/' : '/api/v1/upload/upload/document/';
+            const uploadUrl = currentMode === 'single' ? '/api/v1/upload/' : '/api/v1/upload/document/';
             fetch(uploadUrl, {
                 method: 'POST',
                 body: formData
