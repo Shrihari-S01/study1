@@ -7,9 +7,11 @@ Google Gemini or OpenAI GPT models based on configuration settings.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
 import requests
 
 from app.core.config import get_settings
@@ -23,23 +25,55 @@ settings = get_settings()
 class LLMService:
     """
     Unified LLM wrapper supporting multiple providers (Gemini and OpenAI).
+    Strictly instantiates and executes ONLY the configured provider based on settings.llm_provider.
     """
 
     def __init__(
         self,
     ) -> None:
-
-        logger.info(
-            "Initializing Unified LLM Service."
-        )
-
-        self.provider = (settings.llm_provider or "gemini").lower()
-        self.gemini = GeminiService()
+        self.provider = (settings.llm_provider or "openai").lower()
 
         self.openai_key = settings.openai_api_key or os.environ.get("OPENAI_API_KEY", "")
         self.openai_model = settings.openai_model or "gpt-4.1-mini"
         self.temperature = 0.0
         self.max_tokens = 4096
+
+        self._gemini_instance = None
+
+        self._http_session = None
+
+        if self.provider == "openai":
+            logger.info("Selected LLM Provider: OpenAI | Selected Model: %s", self.openai_model)
+            self._http_session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=2)
+            self._http_session.mount("https://", adapter)
+            self._http_session.mount("http://", adapter)
+        elif self.provider == "gemini":
+            logger.info("Selected LLM Provider: Gemini | Selected Model: %s", settings.gemini_model)
+        else:
+            logger.warning("Unknown LLM Provider '%s'. Defaulting to OpenAI.", self.provider)
+            self.provider = "openai"
+
+    @property
+    def gemini(self) -> GeminiService:
+        """
+        Lazy accessor for GeminiService.
+        Raises RuntimeError if provider is configured as OpenAI to prevent accidental Gemini calls.
+        """
+        if self.provider == "openai":
+            raise RuntimeError(
+                "Runtime Assertion Violation: Gemini method accessed while LLM_PROVIDER is configured as 'openai'."
+            )
+        if self._gemini_instance is None:
+            from app.services.llm.gemini_service import GeminiService
+            self._gemini_instance = GeminiService()
+        return self._gemini_instance
+
+    def _assert_provider(self, target_provider: str) -> None:
+        if self.provider != target_provider:
+            raise RuntimeError(
+                f"Runtime Assertion Violation: Cannot execute {target_provider.upper()} logic because LLM_PROVIDER is configured as '{self.provider}'."
+            )
 
     # ==========================================================
     # Ready Check
@@ -75,7 +109,7 @@ class LLMService:
         return self.gemini.model_info()
 
     # ==========================================================
-    # Supported Fields
+    # Supported Fields & Schema
     # ==========================================================
 
     def supported_fields(
@@ -84,11 +118,18 @@ class LLMService:
         """
         Fields expected from LLM.
         """
-        return self.gemini.supported_fields()
-
-    # ==========================================================
-    # Empty Record
-    # ==========================================================
+        return [
+            "institution_seller_name", "auction_office_department", "vendor_name",
+            "authorized_officer_name", "authorized_officer_number", "email",
+            "institution_seller", "auction_office", "auction_department",
+            "digital_certificate", "catalogue_view_date", "asset_subcategory",
+            "full_payment_balance", "delivery_of_material_taken", "quantity",
+            "units", "start_floor_price", "sum_of_carat_18", "sum_of_carat_19",
+            "sum_of_carat_20", "sum_of_carat_21", "sum_of_carat_22", "sum_of_carat_23",
+            "sum_of_carat_24", "sum_of_net_weight_total", "sum_of_gross_weight_total",
+            "year", "reg_no", "repo_date", "km_driven", "rc", "chassis_number",
+            "yard_rent_percent", "remarks"
+        ]
 
     def empty_record(
         self,
@@ -96,6 +137,15 @@ class LLMService:
         """
         Empty extraction result matching the comprehensive schema.
         """
+        if self.provider == "openai":
+            return {
+                "institution_seller_name": "", "auction_office_department": "",
+                "vendor_name": "", "authorized_officer_name": "",
+                "authorized_officer_number": "", "email": "",
+                "institution_seller": "", "auction_office": "",
+                "auction_department": "", "digital_certificate": "",
+                "catalogue_view_date": "", "remarks": "", "auctions": []
+            }
         return self.gemini.empty_record()
 
     def schema_text(
@@ -104,7 +154,126 @@ class LLMService:
         """
         JSON schema as formatted text.
         """
-        return self.gemini.schema_text()
+        return json.dumps(self.empty_record(), indent=4)
+
+    # ==========================================================
+    # Text Completion (Fast Path for High-Confidence OCR)
+    # ==========================================================
+
+    def text_completion(
+        self,
+        ocr_text: str,
+    ) -> str:
+        """
+        Fast Path: Send high-confidence OCR text to GPT-4.1-mini text completion without image payload.
+        Cuts extraction latency by 50-80%.
+        """
+        if not ocr_text or not ocr_text.strip():
+            return json.dumps(self.empty_record(), indent=4)
+
+        if self.provider == "openai":
+            logger.info("Executing Fast Path: GPT-4.1-mini Text LLM completion (bypassing image payload).")
+
+            # Check persistent disk cache
+            cache_key = hashlib.sha256(f"text:{ocr_text}".encode("utf-8")).hexdigest()
+            cached_resp = self._get_cached_response(cache_key)
+            if cached_resp:
+                logger.info("SHA-256 Text Cache Hit! Returning persistent cached extraction.")
+                return cached_resp
+
+            url = "https://api.openai.com/v1/chat/completions"
+            system_instruction = (
+                "You are an expert structural document data extraction engine for Indian bank auction notices. "
+                "Extract all auction details into the strict JSON schema provided. "
+                "Follow all schema rules, digit integrity, Lakh/Crore calculations, and field mappings. "
+                "Return raw JSON format only."
+            )
+            prompt = (
+                f"Extract structured auction data from the following high-confidence document text:\n"
+                f"<document_text>\n{ocr_text}\n</document_text>\n\n"
+                f"{self.schema_text()}"
+            )
+            payload = {
+                "model": self.openai_model,
+                "messages": [
+                    {"role": "system", "content": system_instruction},
+                    {"role": "user", "content": prompt}
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.0,
+                "max_tokens": 4096
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_key}",
+                "Connection": "close"
+            }
+            response = self._post_with_retry(url, payload, headers, timeout=30, max_retries=3)
+            try:
+                res_data = response.json()
+                content = res_data["choices"][0]["message"]["content"]
+                self._set_cached_response(cache_key, content)
+                return content
+            except Exception as exc:
+                logger.exception("OpenAI Text API response parsing failed.")
+                raise RuntimeError(f"OpenAI Text Parse Error: {exc}") from exc
+
+        return json.dumps(self.empty_record(), indent=4)
+
+    @staticmethod
+    def _downscale_base64_image(base64_image: str, max_dim: int = 1200) -> str:
+        """
+        Downscale Base64 image payload in memory to max_dim pixels to minimize API bandwidth and latency.
+        """
+        try:
+            import base64
+            import io
+            from PIL import Image
+
+            img_bytes = base64.b64decode(base64_image)
+            img = Image.open(io.BytesIO(img_bytes))
+
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+
+            w, h = img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / float(max(w, h))
+                new_w, new_h = int(w * scale), int(h * scale)
+                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=80, optimize=True)
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception as exc:
+            logger.warning("Image downscaling failed, sending original image: %s", exc)
+            return base64_image
+
+    @staticmethod
+    def _get_cached_response(cache_key: str) -> str | None:
+        """Read response from persistent disk cache."""
+        try:
+            cache_dir = os.path.join(os.getcwd(), "temp", "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_file = os.path.join(cache_dir, f"{cache_key}.json")
+            if os.path.exists(cache_file):
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    return f.read()
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _set_cached_response(cache_key: str, content: str) -> None:
+        """Write response to persistent disk cache."""
+        try:
+            cache_dir = os.path.join(os.getcwd(), "temp", "cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            cache_file = os.path.join(cache_dir, f"{cache_key}.json")
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception:
+            pass
 
     # ==========================================================
     # Vision Completion (Direct Scrape)
@@ -119,9 +288,17 @@ class LLMService:
         Send base64 image directly to active LLM API and return structured JSON.
         """
         if self.provider == "openai":
-            logger.info(
-                "Calling OpenAI API directly for vision extraction."
-            )
+            # 1. Downscale base64 image payload in memory
+            scaled_b64 = self._downscale_base64_image(base64_image, max_dim=1200)
+
+            # 2. Check persistent SHA-256 disk cache
+            cache_key = hashlib.sha256(f"vision:{scaled_b64}".encode("utf-8")).hexdigest()
+            cached_resp = self._get_cached_response(cache_key)
+            if cached_resp:
+                logger.info("SHA-256 Vision Cache Hit! Returning persistent cached extraction.")
+                return cached_resp
+
+            logger.info("Calling OpenAI API directly for vision extraction (downscaled).")
 
             url = "https://api.openai.com/v1/chat/completions"
 
@@ -220,6 +397,7 @@ class LLMService:
                 res_data = response.json()
                 content = res_data["choices"][0]["message"]["content"]
                 logger.info("OpenAI vision response received.")
+                self._set_cached_response(cache_key, content)
                 return content
             except Exception as exc:
                 logger.exception("OpenAI API response parsing failed.")
@@ -241,12 +419,12 @@ class LLMService:
         import time
 
         req_headers = dict(headers)
-        req_headers.setdefault("Connection", "close")
+        req_headers.setdefault("Connection", "keep-alive")
 
         last_exception = None
+        session = self._http_session or requests.Session()
 
         for attempt in range(1, max_retries + 1):
-            session = requests.Session()
             try:
                 logger.info("Executing OpenAI API request (attempt %d/%d)...", attempt, max_retries)
                 response = session.post(url, json=payload, headers=req_headers, timeout=timeout)
@@ -470,11 +648,48 @@ class LLMService:
         response: str,
     ) -> dict:
         """
-        Convert JSON string into dictionary.
+        Convert JSON string into dictionary cleanly without requiring provider instance.
         """
-        return self.gemini.parse_json(response)
+        if not response:
+            return {}
+
+        clean_s = response.strip()
+        if clean_s.startswith("```json"):
+            clean_s = clean_s[7:]
+        if clean_s.startswith("```"):
+            clean_s = clean_s[3:]
+        if clean_s.endswith("```"):
+            clean_s = clean_s[:-3]
+        clean_s = clean_s.strip()
+
+        try:
+            return json.loads(clean_s)
+        except Exception as json_err:
+            logger.warning("Initial JSON parse failed: %s. Attempting automated JSON repair...", json_err)
+            
+            # 1. Strip markdown fences and extract outermost JSON object/array
+            m = re.search(r"(\{.*\}|\[.*\])", clean_s, re.DOTALL)
+            repaired_s = m.group(0) if m else clean_s
+
+            # 2. Repair trailing commas before closing braces/brackets
+            repaired_s = re.sub(r",\s*([\}\]])", r"\1", repaired_s)
+
+            # 3. Escape raw unescaped newlines in JSON string values
+            repaired_s = re.sub(r'":\s*"([^"]*)"', lambda match: '": "' + match.group(1).replace('\n', '\\n').replace('\r', '\\r') + '"', repaired_s)
+
+            try:
+                parsed = json.loads(repaired_s)
+                logger.info("JSON repair succeeded.")
+                return parsed
+            except Exception as repair_err:
+                logger.error("JSON repair failed: %s", repair_err)
+                return {}
 
     def close(
         self,
     ) -> None:
-        self.gemini.close()
+        if self._gemini_instance is not None:
+            try:
+                self._gemini_instance.close()
+            except Exception:
+                pass

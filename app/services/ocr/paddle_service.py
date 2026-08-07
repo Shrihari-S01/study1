@@ -47,6 +47,7 @@ class PaddleOCRService:
     """
 
     _ocr = None
+    _ocr_cache: dict[str, Any] = {}
 
     def __init__(
         self,
@@ -284,26 +285,29 @@ class PaddleOCRService:
             Raw PaddleOCR result.
         """
 
-        self.validate(
-            image_path,
-        )
+        from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
+        cached_idx = SpatialOCRIndexCache.get(image_path)
+        if cached_idx is not None:
+            logger.info("Reusing cached SpatialOCRIndex for: %s", image_path)
+            return cached_idx.raw_lines
 
-        logger.info(
-            "Running OCR : %s",
-            image_path.name,
-        )
+        self.validate(image_path)
+        logger.info("Running PaddleOCR single-pass: %s", Path(image_path).name)
 
         if self.ocr is None:
-            return self._run_gemini_ocr(image_path)
+            res = self._run_gemini_ocr(image_path)
+            SpatialOCRIndexCache.put(image_path, res)
+            return res
 
         try:
-            result = self.ocr.ocr(
-                str(image_path),
-                cls=True,
-            )
+            result = self.ocr.ocr(str(image_path), cls=True)
+            SpatialOCRIndexCache.put(image_path, result)
+            return result
         except Exception as exc:
             logger.warning("PaddleOCR failed locally: %s. Falling back to OpenAI OCR.", exc)
-            return self._run_gemini_ocr(image_path)
+            res = self._run_gemini_ocr(image_path)
+            SpatialOCRIndexCache.put(image_path, res)
+            return res
 
         if result is None:
 

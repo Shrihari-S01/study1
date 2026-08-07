@@ -252,21 +252,16 @@ class UploadRepository:
 
         return upload is not None
 
-    # ==========================================================
-    # Count Uploads
-    # ==========================================================
-
     async def count(
         self,
     ) -> int:
         """
-        Return total uploads.
+        Return total uploads count.
         """
+        from sqlalchemy import func
 
         result = await self.db.execute(
-
-            select(Upload)
-
+            select(func.count(Upload.id))
         )
 
-        return len(result.scalars().all())
+        return result.scalar_one() or 0

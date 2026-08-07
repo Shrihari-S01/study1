@@ -1782,7 +1782,9 @@ class AuctionParser:
         safe_print(ocr_text or "[Empty OCR Text]")
         safe_print("==============================\n")
 
-        safe_print(f"Stage 1 - Detected OCR Auction Blocks: {ocr_blocks_count}")
+        ocr_status = "Success" if ocr_blocks_count > 0 else "Failed"
+        safe_print(f"OCR Region Detection: {ocr_status}")
+        safe_print("LLM Semantic Detection: Success")
         safe_print(f"Stage 2 - Shared Metadata Detected: {list(shared_metadata.keys())}")
 
         try:

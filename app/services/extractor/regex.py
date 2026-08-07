@@ -1029,15 +1029,12 @@ class RegexExtractor:
         """
 
         patterns = [
-
-            r"Bid\s*Increment\s*[:\-]?\s*(Rs\.?\s*[\d,]+)",
-
-            r"Increment\s*Amount\s*[:\-]?\s*(Rs\.?\s*[\d,]+)",
-
-            r"Minimum\s*Bid\s*Increment\s*[:\-]?\s*(Rs\.?\s*[\d,]+)",
-
-            r"Bid\s*Increment\s*[:\-]?\s*([\d,]+)",
-
+            r"Bid\s*(?:Increase|Increment)\s*(?:Amount)?\s*[:\-]?\s*(Rs\.?\s*[\d,]+(?:\.\d{2})?)",
+            r"Bid\s*(?:Increase|Increment)\s*(?:Amount)?\s*[:\-]?\s*(₹\s*[\d,]+(?:\.\d{2})?)",
+            r"(?:Minimum|Min)\s*Bid\s*(?:Increase|Increment)\s*[:\-]?\s*(Rs\.?\s*[\d,]+(?:\.\d{2})?)",
+            r"Increase\s*Amount\s*[:\-]?\s*(Rs\.?\s*[\d,]+(?:\.\d{2})?)",
+            r"Increment\s*Amount\s*[:\-]?\s*(Rs\.?\s*[\d,]+(?:\.\d{2})?)",
+            r"Bid\s*(?:Increase|Increment)\s*[:\-]?\s*([\d,]+(?:\.\d{2})?)",
         ]
 
         for pattern in patterns:

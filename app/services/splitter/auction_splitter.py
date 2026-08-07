@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
 import cv2
 import numpy as np
 
@@ -520,20 +521,12 @@ class AuctionSplitter:
 
         )
 
-        if overlap_x > 40:
+        # Require BOTH significant overlap AND very tight gap to merge text fragments of the SAME notice.
+        # Prevent over-merging distinct auction notices stacked in the same column or row.
+        is_same_column = (overlap_x > 50) and (vertical_gap < 12)
+        is_same_row = (overlap_y > 50) and (horizontal_gap < 12)
 
-            return True
-
-        if overlap_y > 40:
-
-            return True
-
-        if horizontal_gap < 30:
-
-            return True
-
-        if vertical_gap < 30:
-
+        if is_same_column or is_same_row:
             return True
 
         return False
@@ -747,23 +740,20 @@ class AuctionSplitter:
 
         )
 
-        saved_notices = []
+        saved_notices: list[dict] = []
+        img_h, img_w = image.shape[:2]
 
         for index, notice in enumerate(
-
             notices,
-
             start=1,
-
         ):
+            # Dynamic Safety Padding Margin (15px) to ensure no footer/border text truncation
+            y1 = max(0, notice["y"] - 15)
+            y2 = min(img_h, notice["y2"] + 15)
+            x1 = max(0, notice["x"] - 15)
+            x2 = min(img_w, notice["x2"] + 15)
 
-            crop = image[
-
-                notice["y"]:notice["y2"],
-
-                notice["x"]:notice["x2"],
-
-            ]
+            crop = image[y1:y2, x1:x2]
 
             filename = (
 
@@ -782,12 +772,29 @@ class AuctionSplitter:
             )
 
             cv2.imwrite(
-
                 str(output_path),
-
                 crop,
-
             )
+
+            # Debug Crop Saving for Block Inspection
+            try:
+                debug_dir = Path(os.getcwd()) / "temp" / "debug_crops"
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                debug_path = debug_dir / f"block_{index}.jpg"
+                cv2.imwrite(str(debug_path), crop)
+                logger.info(
+                    "[SPLITTER DEBUG CROP #%d] Bounding Box: (x=%d, y=%d, w=%d, h=%d, area=%d) | Crop Shape: %s | Saved to: %s",
+                    index,
+                    notice["x"],
+                    notice["y"],
+                    notice["width"],
+                    notice["height"],
+                    notice["area"],
+                    crop.shape,
+                    debug_path,
+                )
+            except Exception as dbg_err:
+                logger.warning("Failed to save debug crop for block #%d: %s", index, dbg_err)
 
             saved_notices.append(
 

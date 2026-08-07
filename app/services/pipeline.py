@@ -6,25 +6,25 @@ Main orchestration service.
 
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
+import os
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.logger import get_logger
-
+from app.core.logger import PipelineStageTimer, get_logger
 from app.repositories.upload_repository import UploadRepository
-
-from app.services.upload.upload_service import UploadService
-
-from app.services.preprocess.image_enhancer import ImageEnhancer
-
 from app.services.detection.layout_detector import LayoutDetector
-
-from app.services.splitter.auction_splitter import AuctionSplitter
-
-from app.services.ocr.paddle_service import PaddleOCRService
-
 from app.services.extractor.parser import AuctionParser
-
+from app.services.ocr.paddle_service import PaddleOCRService
+from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
+from app.services.preprocess.image_enhancer import ImageEnhancer
+from app.services.splitter.auction_splitter import AuctionSplitter
 from app.services.storage.database_service import DatabaseService
+from app.services.upload.upload_service import UploadService
 
 logger = get_logger(__name__)
 
@@ -421,15 +421,26 @@ class AuctionPipeline:
         image_path: str | dict,
         original_file_path: str = "",
         global_ocr_text_holder: list[str] = None,
+        bbox_meta: dict = None,
     ) -> dict:
         """
         Process a single auction notice using direct Vision scraping.
         """
         if isinstance(image_path, dict) and "image_path" in image_path:
+            bbox_meta = image_path
             image_path = image_path["image_path"]
 
-        # Use original split notice image directly for Gemini LLM to preserve character fidelity
-        logger.info("Using original split notice image directly for Gemini LLM to preserve character fidelity.")
+        # Save debug crop visualization before processing
+        try:
+            debug_dir = os.path.join(os.getcwd(), "temp", "debug_crops")
+            os.makedirs(debug_dir, exist_ok=True)
+            crop_filename = os.path.basename(str(image_path))
+            debug_crop_path = os.path.join(debug_dir, f"debug_{crop_filename}")
+            import shutil
+            shutil.copy(str(image_path), debug_crop_path)
+            logger.info("Saved debug crop visualization: %s", debug_crop_path)
+        except Exception as dbg_err:
+            logger.warning("Failed to save debug crop visualization: %s", dbg_err)
 
         import base64
         try:
@@ -445,23 +456,119 @@ class AuctionPipeline:
 
         ocr_text = ""
         try:
-            logger.info("Extracting OCR text helper to prevent vision misreads.")
-            ocr_text = await self.extract_text(image_path)
+            from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
+            cached_idx = SpatialOCRIndexCache.get(original_file_path or image_path)
+            if cached_idx and bbox_meta and "x" in bbox_meta and "y" in bbox_meta:
+                # Spatial crop query for exact bounding box text
+                ocr_text = cached_idx.query_bounding_box(
+                    x=float(bbox_meta.get("x", 0)),
+                    y=float(bbox_meta.get("y", 0)),
+                    w=float(bbox_meta.get("width", 500)),
+                    h=float(bbox_meta.get("height", 500)),
+                    margin=20.0,
+                )
+            elif cached_idx:
+                ocr_text = cached_idx.get_full_text()
+            else:
+                ocr_text = await self.extract_text(image_path)
         except Exception:
-            logger.exception("OCR text helper extraction failed, proceeding without it.")
+            logger.exception("OCR text helper retrieval failed, proceeding without it.")
+
+        retry_count = 0
+        try:
+            # Adaptive OCR Enhancement Retry if text density is sparse (< 10 words)
+            ocr_words = ocr_text.split() if ocr_text else []
+            if len(ocr_words) < 10 and not cached_idx:
+                logger.info("[Lot #%s] Sparse OCR text detected (%d words). Attempting adaptive crop enhancement retry.", bbox_meta.get("auction_number", 1) if bbox_meta else 1, len(ocr_words))
+                enhanced_crop_path = self.image_enhancer.enhance_crop_adaptive(str(image_path))
+                if enhanced_crop_path != str(image_path):
+                    retry_text = await self.extract_text(enhanced_crop_path)
+                    if len(retry_text.split()) > len(ocr_words):
+                        logger.info("[Lot #%s] OCR retry succeeded: word count improved from %d to %d.", bbox_meta.get("auction_number", 1) if bbox_meta else 1, len(ocr_words), len(retry_text.split()))
+                        ocr_text = retry_text
+                        ocr_words = ocr_text.split()
+                        retry_count = 1
+        except Exception as retry_err:
+            logger.warning("Adaptive OCR retry failed: %s", retry_err)
 
         try:
-            logger.info("Attempting direct LLM Vision extraction.")
+            # Hybrid Fast Path Routing: Evaluate OCR confidence, density, and field completeness
+            if len(ocr_words) >= 15:
+                logger.info("Executing Fast Path: High-density OCR text found (%d words). Calling Text LLM.", len(ocr_words))
+                text_json_str = self.parser.llm.text_completion(ocr_text)
+                parsed_fields = self.parser.parse_llm_json(text_json_str)
+
+                # Pre-PHP Consistency Checker
+                from app.services.integration.consistency_checker import PrePHPConsistencyChecker
+                PrePHPConsistencyChecker.check_extraction_consistency(
+                    ocr_text,
+                    parsed_fields[0] if isinstance(parsed_fields, list) and len(parsed_fields) > 0 else (parsed_fields if isinstance(parsed_fields, dict) else {}),
+                    lot_index=int(bbox_meta.get("auction_number", 1)) if bbox_meta else 1,
+                )
+
+                # Structured block diagnostic report
+                self._log_block_diagnostic(
+                    index=int(bbox_meta.get("auction_number", 1)) if bbox_meta else 1,
+                    image_path=str(image_path),
+                    ocr_text=ocr_text,
+                    llm_input_str=ocr_text,
+                    llm_output_str=text_json_str,
+                    record=parsed_fields,
+                    bbox_meta=bbox_meta,
+                    retry_count=retry_count,
+                    vision_used=False,
+                )
+
+                return {
+                    "success": True,
+                    "image": image_path,
+                    "ocr_text": ocr_text,
+                    "record": parsed_fields,
+                    "raw_llm": text_json_str,
+                    "validation": {},
+                    "confidence": {"overall": 0.95},
+                    "statistics": {},
+                }
+        except Exception as fast_path_err:
+            logger.warning("Fast Path Text LLM completion failed (%s). Falling back to Vision LLM.", fast_path_err)
+
+        try:
+            logger.info("Attempting direct LLM Vision extraction (downscaled in-memory).")
             parsed = self.parser.process_vision(
                 base64_image,
                 ocr_text=ocr_text,
                 global_ocr_text=""
             )
+
+            rec_fields = parsed.get("fields", [])
+            raw_resp = json.dumps(parsed.get("llm", {}), default=str)
+
+            # Pre-PHP Consistency Checker
+            from app.services.integration.consistency_checker import PrePHPConsistencyChecker
+            PrePHPConsistencyChecker.check_extraction_consistency(
+                ocr_text,
+                rec_fields[0] if isinstance(rec_fields, list) and len(rec_fields) > 0 else (rec_fields if isinstance(rec_fields, dict) else {}),
+                lot_index=int(bbox_meta.get("auction_number", 1)) if bbox_meta else 1,
+            )
+
+            # Structured block diagnostic report
+            self._log_block_diagnostic(
+                index=int(bbox_meta.get("auction_number", 1)) if bbox_meta else 1,
+                image_path=str(image_path),
+                ocr_text=ocr_text,
+                llm_input_str=ocr_text,
+                llm_output_str=raw_resp,
+                record=rec_fields,
+                bbox_meta=bbox_meta,
+                retry_count=retry_count,
+                vision_used=True,
+            )
+
             return {
                 "success": True,
                 "image": image_path,
                 "ocr_text": ocr_text,
-                "record": parsed.get("fields", []),
+                "record": rec_fields,
                 "raw_llm": parsed.get("llm", {}),
                 "validation": parsed.get("validation", {}),
                 "confidence": parsed.get("confidence", {}),
@@ -474,6 +581,86 @@ class AuctionPipeline:
                 "image": image_path,
                 "message": f"Vision parsing failed: {exc}",
             }
+
+    @staticmethod
+    def _log_block_diagnostic(
+        index: int,
+        image_path: str,
+        ocr_text: str,
+        llm_input_str: str,
+        llm_output_str: str,
+        record: Any,
+        bbox_meta: Optional[dict] = None,
+        retry_count: int = 0,
+        vision_used: bool = False,
+    ) -> None:
+        """
+        Prints structured production diagnostic log for an individual auction block.
+        """
+        ocr_chars = len(ocr_text or "")
+        ocr_words = len(ocr_text.split()) if ocr_text else 0
+        llm_in_chars = len(llm_input_str or "")
+        llm_out_chars = len(llm_output_str or "")
+
+        rec_dict = record if isinstance(record, dict) else (record[0] if isinstance(record, list) and len(record) > 0 and isinstance(record[0], dict) else {})
+
+        borrower = str(rec_dict.get("borrower_name") or rec_dict.get("borrower") or "").strip()
+        location = str(rec_dict.get("product_location") or rec_dict.get("property_address") or rec_dict.get("assets_location") or "").strip()
+        price = str(rec_dict.get("reserver_price") or rec_dict.get("reserve_price") or rec_dict.get("auction_start_price") or rec_dict.get("starting_price") or "").strip()
+        brief = str(rec_dict.get("auction_breif") or rec_dict.get("auction_details") or rec_dict.get("description") or "").strip()
+
+        has_borrower = "YES" if borrower and borrower.lower() not in {"n/a", "null", "none", "undefined"} else "NO"
+        has_location = "YES" if location and location.lower() not in {"n/a", "null", "none", "undefined"} else "NO"
+        has_price = "YES" if price and price not in {"0", "0.0", "0.00", "n/a", "null", "none"} else "NO"
+        has_brief = "YES" if brief and brief.lower() not in {"n/a", "null", "none", "undefined"} else "NO"
+
+        missing_fields = []
+        if has_borrower == "NO": missing_fields.append("borrower_name")
+        if has_location == "NO": missing_fields.append("product_location")
+        if has_price == "NO": missing_fields.append("reserve_price")
+        if has_brief == "NO": missing_fields.append("auction_brief")
+
+        is_complete = len(missing_fields) == 0
+        status_str = "COMPLETE" if is_complete else f"PARTIAL (Missing: {', '.join(missing_fields)})"
+
+        bbox_str = "N/A"
+        if bbox_meta and "x" in bbox_meta and "y" in bbox_meta:
+            bbox_str = f"(x={bbox_meta.get('x')}, y={bbox_meta.get('y')}, w={bbox_meta.get('width')}, h={bbox_meta.get('height')})"
+
+        logger.info(
+            "\n========== AUCTION BLOCK #%d DIAGNOSTIC REPORT ==========\n"
+            "Crop Saved         : %s\n"
+            "Crop Coordinates   : %s\n"
+            "OCR Words / Chars  : %d words (%d chars)\n"
+            "LLM Input / Output : In: %d chars | Out: %d chars\n"
+            "Vision LLM Used    : %s\n"
+            "OCR Retry Count    : %d\n"
+            "Borrower Found     : %s (%r)\n"
+            "Location Found     : %s (%r)\n"
+            "Reserve Price Found: %s (%r)\n"
+            "Brief Found        : %s\n"
+            "Missing Fields     : %s\n"
+            "Final Status       : %s\n"
+            "========================================================",
+            index,
+            image_path,
+            bbox_str,
+            ocr_words,
+            ocr_chars,
+            llm_in_chars,
+            llm_out_chars,
+            "YES" if vision_used else "NO",
+            retry_count,
+            has_borrower,
+            borrower[:30],
+            has_location,
+            location[:30],
+            has_price,
+            price[:20],
+            has_brief,
+            missing_fields if missing_fields else "NONE",
+            status_str,
+        )
     
 
     # ==========================================================
@@ -489,47 +676,34 @@ class AuctionPipeline:
         Process all auction notices.
         """
 
-        logger.info(
-            "Processing %d notices.",
-            len(images),
-        )
+        import asyncio
+        import time
+
+        start_t = time.time()
+        logger.info("Processing %d notices in parallel using asyncio.gather.", len(images))
 
         global_ocr_text_holder = [""]
-        results = []
 
-        for image in images:
-
+        async def _proc_single(image_item: str) -> dict:
             try:
-
-                result = await self.process_notice(
-                    image,
+                return await self.process_notice(
+                    image_item,
                     original_file_path=original_file_path,
                     global_ocr_text_holder=global_ocr_text_holder,
                 )
+            except Exception as exc:
+                logger.exception("Notice processing failed for image: %s", image_item)
+                return {
+                    "success": False,
+                    "image": image_item,
+                    "message": str(exc),
+                }
 
-                results.append(
-                    result,
-                )
+        results = await asyncio.gather(*[_proc_single(img) for img in images])
+        elapsed = round(time.time() - start_t, 2)
+        logger.info("Parallel processing of %d notices completed in %.2fs.", len(images), elapsed)
 
-            except Exception:
-
-                logger.exception(
-                    "Notice processing failed."
-                )
-
-                results.append(
-
-                    {
-
-                        "success": False,
-
-                        "image": image,
-
-                    }
-
-                )
-
-        return results
+        return list(results)
     
 
     # ==========================================================
@@ -736,37 +910,90 @@ class AuctionPipeline:
                 "extraction_results": [{"success": True, "record": records}]
             }
 
-        images = await self.prepare_images(
+        import os
+        import time
+        from app.core.logger import PipelineStageTimer
+        from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
 
-            upload.original_file_path,
-            upload.upload_number,
+        timer = PipelineStageTimer()
+        t0 = time.time()
 
-        )
+        # 1. Image Load & Bypass Check
+        t_sub = time.time()
+        enhanced_path = await self.enhance_image(upload.original_file_path)
+        timer.record_stage("Image Preprocessing", time.time() - t_sub)
 
-        # OCR text is now lazily extracted during fallback in process_notice to minimize latency
-        extraction = await self.process_ocr_stage(
-            images,
-            original_file_path=upload.original_file_path,
-        )
+        # 2. Single-Pass OCR & Spatial Index Construction
+        t_sub = time.time()
+        raw_ocr_lines = self.ocr.extract(enhanced_path)
+        spatial_index = SpatialOCRIndexCache.get(enhanced_path)
+        cached_ocr_text = spatial_index.get_full_text() if spatial_index else ""
+        timer.record_stage("Single-Pass OCR", time.time() - t_sub)
 
-        database = await self.save_results(
+        # 3. Layout Detection & Split
+        t_sub = time.time()
+        images = await self.split_image(enhanced_path, upload.upload_number)
+        timer.record_stage("Region Detection", time.time() - t_sub)
 
-            upload,
+        # 4. Shared Document Metadata Extraction (Pass 1 - Fast Path Text LLM)
+        t_sub = time.time()
+        shared_metadata = {}
+        try:
+            if cached_ocr_text:
+                raw_shared_str = self.parser.llm.text_completion(cached_ocr_text[:3000])
+                if isinstance(raw_shared_str, str):
+                    import json
+                    try:
+                        shared_metadata = json.loads(raw_shared_str)
+                    except Exception:
+                        shared_metadata = {}
+        except Exception as shared_err:
+            logger.warning("Shared metadata single-pass extraction failed: %s", shared_err)
+        timer.record_stage("Shared Metadata Pass", time.time() - t_sub)
 
-            extraction["results"],
+        # 5. Dynamic Worker Pool & Async Semaphore Parallel Auction Extraction
+        t_sub = time.time()
+        num_blocks = len(images)
+        cpu_workers = os.cpu_count() or 4
+        max_workers = min(num_blocks, cpu_workers, 6) if num_blocks > 0 else 1
+        sem = asyncio.Semaphore(max_workers)
 
-        )
+        async def _extract_worker(image_item: dict | str) -> dict:
+            async with sem:
+                img_p = image_item["image_path"] if isinstance(image_item, dict) and "image_path" in image_item else image_item
+                bbox_meta = image_item if isinstance(image_item, dict) else None
+                try:
+                    res = await self.process_notice(img_p, original_file_path=upload.original_file_path, bbox_meta=bbox_meta)
+                    if res.get("success") and isinstance(res.get("record"), dict):
+                        # Merge shared document metadata into lot record
+                        if isinstance(shared_metadata, dict):
+                            for meta_k in ["institution_seller_name", "institution_seller", "auction_office", "auction_department", "catalogue_view_date", "remarks", "emd_bank_name"]:
+                                if not res["record"].get(meta_k) and shared_metadata.get(meta_k):
+                                    res["record"][meta_k] = shared_metadata[meta_k]
+                    return res
+                except Exception as lot_exc:
+                    logger.exception("Async lot extraction worker exception for image %s: %s", img_p, lot_exc)
+                    return {
+                        "success": False,
+                        "image": str(img_p),
+                        "message": f"Lot extraction task failed: {lot_exc}",
+                    }
+
+        results = await asyncio.gather(*[_extract_worker(img) for img in images])
+        timer.record_stage("Parallel Lot Extraction", time.time() - t_sub)
+
+        # 6. Database Save & Profiling Summary Report
+        t_sub = time.time()
+        database = await self.save_results(upload, list(results))
+        timer.record_stage("Database Persistence", time.time() - t_sub)
+
+        timer.generate_report(logger)
 
         return {
-
             "upload": database["upload"],
-
             "results": database["records"],
-
-            "summary": extraction["summary"],
-
-            "extraction_results": extraction["results"],
-
+            "summary": self.extraction_summary(list(results)),
+            "performance_report": timer.generate_report(logger),
         }
 
     # ==========================================================

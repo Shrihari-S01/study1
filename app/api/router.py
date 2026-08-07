@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.api.v1.upload import router as upload_router
 from app.api.v1.auction import router as auction_router
 from app.api.v1.health import router as health_router
+from app.api.v1.integration import router as integration_router
 
 api_router = APIRouter()
 
@@ -28,4 +29,9 @@ api_router.include_router(
     auction_router,
     prefix="/auction",
     tags=["Auction"],
+)
+
+api_router.include_router(
+    integration_router,
+    tags=["Angular & PHP Integration"],
 )

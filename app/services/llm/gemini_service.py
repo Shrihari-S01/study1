@@ -327,7 +327,9 @@ class GeminiService:
             "5. EMD BANK LOGIC ('emd_bank_name'):\n"
             "   - Extract explicit Beneficiary Bank / Bank field under Account Details / Payment section (e.g. Beneficiary Bank: Axis Bank -> emd_bank_name = 'Axis Bank').\n"
             "6. COMPREHENSIVE BORROWER & MULTI-PARTY EXTRACTION (CRITICAL):\n"
-            "   - Capture ALL borrowers, co-borrowers, guarantors, legal heirs, and joint account holders listed under Borrower sections into borrower_name."
+            "   - Extract ONLY the legal entity or person names of borrowers, co-borrowers, guarantors, legal heirs, and joint account holders into borrower_name (optionally formatted as 'Company Name (Prop. Person Name)' if a proprietor is listed).\n"
+            "   - STOP borrower_name extraction at any address indicators (such as 'having registered office/address', 'address at', 'r/o', 'residing at', 'situated at', 'village', 'plot no', 'door no', 'survey no', 'street', 'road', 'district', 'state', 'PIN').\n"
+            "   - NEVER include borrower addresses inside borrower_name. Any address text following a borrower MUST be placed into property_address or asset_location."
         )
 
         prompt = (

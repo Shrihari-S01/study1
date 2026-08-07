@@ -115,9 +115,9 @@ class AuctionBase(BaseModel):
     # Inspection Schedule
     # ======================================================
 
-    inspection_from_date: Optional[date] = None
+    inspection_from_date: Optional[datetime] = None
 
-    inspection_to_date: Optional[date] = None
+    inspection_to_date: Optional[datetime] = None
 
     submit_application: str = Field(
         default="",

@@ -93,6 +93,26 @@ class Settings(BaseSettings):
 
     timeout: int = 120
 
+    # ======================================================
+    # PHP Integration Engine Settings
+    # ======================================================
+
+    php_insert_api_url: str = Field(
+        default="",
+        description="Loaded dynamically from .env PHP_INSERT_API_URL",
+    )
+
+    php_api_timeout: float = 30.0
+
+    php_api_max_retries: int = 3
+
+    file_url_base_prefix: str = Field(
+        default="",
+        description="Loaded dynamically from .env FILE_URL_BASE_PREFIX",
+    )
+
+    max_upload_size_mb: int = 50
+
 
     # ======================================================
     # Logging

@@ -106,6 +106,12 @@ class DatabaseService:
             logger.info("=== DEBUG LOG [1/3] Raw LLM JSON ===")
             logger.info("%s", auction)
             
+            # Use CommonAISchemaBuilder for robust alias mapping across all extracted keys
+            from app.services.integration.schema_builder import CommonAISchemaBuilder
+            from app.services.integration.normalizer import DataNormalizer
+            
+            common = CommonAISchemaBuilder.build_schema(auction)
+            
             # Create a dictionary for the DB model using the incoming parsed fields
             db_data = {}
             for col in Auction.__table__.columns:
@@ -113,27 +119,27 @@ class DatabaseService:
                 if val not in ("", None):
                     db_data[col.key] = val
 
-            # Alias mapping: map LLM/Validator keys to DB fields if missing
-            if not db_data.get("borrower") and auction.get("borrower_name"):
-                db_data["borrower"] = auction["borrower_name"]
+            # Alias mapping from CommonAISchema
+            if not db_data.get("borrower"):
+                db_data["borrower"] = DataNormalizer.restore_legal_abbreviations(common.get("borrower_name") or auction.get("borrower_name") or auction.get("borrower"))
             
-            if not db_data.get("asset_type") and auction.get("asset_type"):
-                db_data["asset_type"] = auction["asset_type"]
+            if not db_data.get("asset_type"):
+                db_data["asset_type"] = common.get("asset_type") or auction.get("asset_type")
 
-            if not db_data.get("asset_category") and auction.get("asset_category"):
-                db_data["asset_category"] = auction["asset_category"]
+            if not db_data.get("asset_category"):
+                db_data["asset_category"] = common.get("asset_category") or auction.get("asset_category")
 
-            if not db_data.get("auction_no") and auction.get("auction_no"):
-                db_data["auction_no"] = auction["auction_no"]
+            if not db_data.get("auction_no"):
+                db_data["auction_no"] = common.get("auction_number") or auction.get("auction_no")
 
-            if not db_data.get("auction_description") and auction.get("auction_description"):
-                db_data["auction_description"] = auction["auction_description"]
+            if not db_data.get("auction_description"):
+                db_data["auction_description"] = common.get("description") or auction.get("auction_description")
 
-            if not db_data.get("auction_type") and auction.get("auction_type"):
-                db_data["auction_type"] = auction["auction_type"]
+            if not db_data.get("auction_type"):
+                db_data["auction_type"] = common.get("auction_type") or auction.get("auction_type")
 
             if not db_data.get("assets_location"):
-                db_data["assets_location"] = auction.get("assets_location") or auction.get("property_address") or auction.get("address") or auction.get("location") or ""
+                db_data["assets_location"] = common.get("asset_location") or auction.get("assets_location") or auction.get("property_address") or auction.get("address") or auction.get("location") or ""
 
             # Explicitly parse and clean decimal fields to avoid DB crash
             for field in ["auction_start_price", "emd_amount", "increment_price", "full_payment_balance", "start_floor_price"]:
@@ -143,36 +149,38 @@ class DatabaseService:
 
                 if val in (None, ""):
                     if field == "auction_start_price":
-                        val = auction.get("starting_price") or auction.get("reserve_price") or auction.get("start_floor_price") or auction.get("auction_start_price")
+                        val = common.get("reserve_price") or auction.get("starting_price") or auction.get("reserve_price") or auction.get("start_floor_price") or auction.get("auction_start_price")
                     elif field == "emd_amount":
-                        val = auction.get("emd_price") or auction.get("pre_bid_emd") or auction.get("emd_amount")
+                        val = common.get("emd_amount") or auction.get("emd_price") or auction.get("pre_bid_emd") or auction.get("emd_amount")
                     elif field == "increment_price":
-                        val = auction.get("increment_price") or auction.get("bid_increment")
+                        val = common.get("increment_price") or auction.get("increment_price") or auction.get("bid_increment") or auction.get("bid_increase_amount")
 
                 if val not in (None, ""):
                     try:
                         clean_val = str(val).replace(",", "").replace("₹", "").replace("Rs.", "").strip()
+                        clean_val = re.sub(r"(?i)rs\.?\s*", "", clean_val).rstrip("/-").strip()
                         db_data[field] = Decimal(clean_val)
                     except Exception:
                         db_data[field] = None
-                else:
-                    db_data[field] = None
 
-            if not db_data.get("currency") and auction.get("currency"):
-                db_data["currency"] = auction["currency"]
+            if not db_data.get("currency"):
+                db_data["currency"] = common.get("currency") or auction.get("currency") or "INR"
 
-            if not db_data.get("auction_live_status") and auction.get("auction_live_status"):
-                db_data["auction_live_status"] = auction["auction_live_status"]
+            if not db_data.get("auction_live_status"):
+                db_data["auction_live_status"] = common.get("auction_live_status") or auction.get("auction_live_status")
 
-            if not db_data.get("first_bid_acceptance_condition") and auction.get("first_bid_acceptance_condition"):
-                db_data["first_bid_acceptance_condition"] = auction["first_bid_acceptance_condition"]
+            if not db_data.get("first_bid_acceptance_condition"):
+                db_data["first_bid_acceptance_condition"] = common.get("first_bid_acceptance_condition") or auction.get("first_bid_acceptance_condition")
 
-            if not db_data.get("submit_application") and auction.get("submit_application"):
-                db_data["submit_application"] = auction["submit_application"]
+            if not db_data.get("submit_application"):
+                db_data["submit_application"] = common.get("submit_application") or auction.get("submit_application")
+
+            if not db_data.get("catalogue_view_date"):
+                db_data["catalogue_view_date"] = common.get("catalogue_view_date") or auction.get("catalogue_view_date")
 
             # Map institution seller and office department fallbacks
             if not db_data.get("institution_seller"):
-                db_data["institution_seller"] = auction.get("institution_seller") or auction.get("institution_seller_name") or ""
+                db_data["institution_seller"] = common.get("seller_name") or auction.get("institution_seller") or auction.get("institution_seller_name") or ""
 
             if not db_data.get("auction_office"):
                 db_data["auction_office"] = auction.get("auction_office") or auction.get("auction_office_department") or ""
@@ -180,23 +188,26 @@ class DatabaseService:
             if not db_data.get("auction_department"):
                 db_data["auction_department"] = auction.get("auction_department") or auction.get("auction_office_department") or ""
 
-            if not db_data.get("emd_bank_name") and auction.get("emd_bank_name"):
-                db_data["emd_bank_name"] = auction["emd_bank_name"]
+            if not db_data.get("emd_bank_name"):
+                db_data["emd_bank_name"] = common.get("emd_bank_name") or auction.get("emd_bank_name")
 
             if not db_data.get("emd_account_no"):
-                db_data["emd_account_no"] = auction.get("emd_account_no") or auction.get("emd_account_number") or ""
+                db_data["emd_account_no"] = common.get("emd_account_no") or auction.get("emd_account_no") or auction.get("emd_account_number") or ""
 
             if not db_data.get("emd_ifsc"):
-                db_data["emd_ifsc"] = auction.get("emd_ifsc", "") or auction.get("ifsc", "")
+                db_data["emd_ifsc"] = common.get("emd_ifsc") or auction.get("emd_ifsc", "") or auction.get("ifsc", "")
 
             if not db_data.get("authorized_officer_name"):
-                db_data["authorized_officer_name"] = auction.get("authorized_officer_name") or auction.get("authorized_officer") or auction.get("contact_person") or ""
+                db_data["authorized_officer_name"] = common.get("authorized_officer_name") or auction.get("authorized_officer_name") or auction.get("authorized_officer") or auction.get("contact_person") or ""
 
             if not db_data.get("authorized_officer_number"):
-                db_data["authorized_officer_number"] = auction.get("authorized_officer_number") or auction.get("contact_number") or auction.get("telephone_number") or ""
+                db_data["authorized_officer_number"] = common.get("authorized_officer_number") or auction.get("authorized_officer_number") or auction.get("contact_number") or auction.get("telephone_number") or ""
 
-            if not db_data.get("payment_type") and auction.get("payment_type"):
-                db_data["payment_type"] = auction["payment_type"]
+            if not db_data.get("payment_type"):
+                db_data["payment_type"] = auction.get("payment_type")
+
+            if not db_data.get("vendor_name"):
+                db_data["vendor_name"] = auction.get("vendor_name")
 
 
 
@@ -445,6 +456,21 @@ class DatabaseService:
     ):
 
         return await self.auction_repository.get_by_upload_id(upload_id)
+
+    async def count_auctions(self) -> int:
+        return await self.auction_repository.count()
+
+    async def search_auctions(self, keyword: str):
+        borrowers = await self.auction_repository.search_borrower(keyword)
+        banks = await self.auction_repository.search_bank(keyword)
+        # Combine unique results
+        combined = {a.id: a for a in (borrowers + banks)}
+        return list(combined.values())
+
+    async def delete_auction(self, auction_id: str):
+        auction = await self.get_auction(auction_id)
+        if auction:
+            await self.auction_repository.delete(auction)
 
     # ==========================================================
     # Statistics

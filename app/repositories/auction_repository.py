@@ -289,14 +289,13 @@ class AuctionRepository:
         """
         Return total auction count.
         """
+        from sqlalchemy import func
 
         result = await self.db.execute(
-
-            select(Auction)
-
+            select(func.count(Auction.id))
         )
 
-        return len(result.scalars().all())
+        return result.scalar_one() or 0
 
     # ==========================================================
     # Exists

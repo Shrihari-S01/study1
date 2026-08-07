@@ -111,3 +111,46 @@ def get_logger(
     configure_logging()
 
     return logging.getLogger(name)
+
+
+class PipelineStageTimer:
+    """
+    Lightweight stage profiler that tracks execution durations per pipeline sub-stage
+    and logs a formatted Pipeline Performance Report highlighting the primary bottleneck.
+    """
+
+    def __init__(self) -> None:
+        import time
+        self.start_time = time.time()
+        self.stage_durations: dict[str, float] = {}
+
+    def record_stage(self, stage_name: str, duration_seconds: float) -> None:
+        self.stage_durations[stage_name] = round(duration_seconds, 3)
+
+    def generate_report(self, logger_instance: logging.Logger = None) -> dict:
+        import time
+        total_time = round(time.time() - self.start_time, 2)
+        log = logger_instance or logging.getLogger(__name__)
+
+        report_lines = ["\n==================================================", "Pipeline Performance Report", ""]
+        primary_bottleneck = "None"
+        max_duration = 0.0
+
+        for stage, duration in self.stage_durations.items():
+            pct = (duration / total_time * 100.0) if total_time > 0 else 0.0
+            report_lines.append(f"{stage:<24} : {duration:6.2f} s ({pct:4.1f}%)")
+            if duration > max_duration:
+                max_duration = duration
+                primary_bottleneck = f"{stage} ({pct:.1f}%)"
+
+        report_lines.append("")
+        report_lines.append(f"Total Time               : {total_time:6.2f} s")
+        report_lines.append(f"Bottleneck               : {primary_bottleneck}")
+        report_lines.append("==================================================\n")
+
+        log.info("\n".join(report_lines))
+        return {
+            "total_time": total_time,
+            "durations": self.stage_durations,
+            "primary_bottleneck": primary_bottleneck,
+        }

@@ -21,9 +21,12 @@ from app.core.logger import get_logger
 from app.database.base import Base
 from app.database.connection import engine
 
-logger = get_logger(__name__)
+from app.models.auction import Auction
+from app.models.auction_processing_session import AuctionProcessingSession
+from app.models.upload import Upload
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 # ==========================================================
@@ -37,6 +40,11 @@ async def lifespan(app: FastAPI):
     """
 
     logger.info("Starting Auction AI Application...")
+
+    provider_name = "OpenAI" if (settings.llm_provider or "").lower() == "openai" else "Gemini"
+    model_name = settings.openai_model if provider_name == "OpenAI" else settings.gemini_model
+    logger.info("Selected LLM Provider: %s", provider_name)
+    logger.info("Selected Model: %s", model_name)
 
     try:
 

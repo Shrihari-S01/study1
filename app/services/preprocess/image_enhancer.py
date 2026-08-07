@@ -45,6 +45,43 @@ class ImageEnhancer:
             return image_path
         return Path(image_path)
 
+    def enhance_crop_adaptive(
+        self,
+        crop_image_path: str,
+    ) -> str:
+        """
+        Adaptive enhancement specifically for low-confidence / low-contrast notice crops:
+        - CLAHE contrast enhancement
+        - Unsharp mask / sharpening filter
+        - Text deskew
+        """
+        try:
+            image = cv2.imread(crop_image_path)
+            if image is None:
+                return crop_image_path
+
+            # 1. Convert to Grayscale
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+            # 2. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+
+            # 3. Sharpening Filter
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+            sharpened = cv2.filter2D(enhanced, -1, kernel)
+
+            # 4. Deskew
+            final_img = self.deskew(sharpened)
+
+            enhanced_path = crop_image_path.replace(".jpg", "_enhanced.jpg").replace(".png", "_enhanced.png")
+            cv2.imwrite(enhanced_path, final_img)
+            logger.info("Saved adaptive enhanced crop: %s", enhanced_path)
+            return enhanced_path
+        except Exception as exc:
+            logger.warning("Adaptive crop enhancement failed for %s: %s", crop_image_path, exc)
+            return crop_image_path
+
     # ==========================================================
     # Deskew Image
     # ==========================================================
