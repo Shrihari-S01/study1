@@ -9,7 +9,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class DocumentValidator:
     """
     Stage 1: Validates incoming PDF files prior to parsing.

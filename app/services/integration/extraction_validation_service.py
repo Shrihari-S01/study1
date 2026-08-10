@@ -12,7 +12,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class ExtractionValidationService:
     """
     Validates mandatory fields, numeric integrity, and date formats of extracted auction records.

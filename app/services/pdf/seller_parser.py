@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class SellerParser:
     """
     Extracts seller organization details from the Seller section.

@@ -12,7 +12,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class BusinessDefaultInjector:
     """
     Injects business default values into mapped PHP payload.

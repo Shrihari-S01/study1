@@ -9,24 +9,14 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-# ==========================================================
-# Generic Type
-# ==========================================================
-
 T = TypeVar("T")
-
-
-# ==========================================================
-# Base API Response
-# ==========================================================
 
 class APIResponse(
     BaseModel,
     Generic[T],
 ):
     """
-    Standard API response.
+    Standard API response. 
     """
 
     model_config = ConfigDict(
@@ -42,11 +32,6 @@ class APIResponse(
     timestamp: datetime = Field(
         default_factory=datetime.utcnow,
     )
-
-
-# ==========================================================
-# Error Response
-# ==========================================================
 
 class ErrorResponse(BaseModel):
     """
@@ -69,11 +54,6 @@ class ErrorResponse(BaseModel):
         default_factory=datetime.utcnow,
     )
 
-
-# ==========================================================
-# Pagination
-# ==========================================================
-
 class Pagination(BaseModel):
     """
     Pagination information.
@@ -86,11 +66,6 @@ class Pagination(BaseModel):
     total_records: int
 
     total_pages: int
-
-
-# ==========================================================
-# Paginated Response
-# ==========================================================
 
 class PaginatedResponse(
     BaseModel,
@@ -116,11 +91,6 @@ class PaginatedResponse(
         default_factory=datetime.utcnow,
     )
 
-
-# ==========================================================
-# Health Response
-# ==========================================================
-
 class HealthResponse(BaseModel):
     """
     Health check response.
@@ -137,11 +107,6 @@ class HealthResponse(BaseModel):
     server_time: datetime = Field(
         default_factory=datetime.utcnow,
     )
-
-
-# ==========================================================
-# Simple Message Response
-# ==========================================================
 
 class MessageResponse(BaseModel):
     """

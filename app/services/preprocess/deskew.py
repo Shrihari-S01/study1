@@ -15,7 +15,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class DeskewService:
     """
     Correct image skew.
@@ -28,10 +27,6 @@ class DeskewService:
         logger.info(
             "Deskew Service Initialized."
         )
-
-    # ==========================================================
-    # Deskew Image
-    # ==========================================================
 
     def process(
         self,
@@ -86,10 +81,6 @@ class DeskewService:
         )
 
         return output_path
-
-    # ==========================================================
-    # Detect Skew Angle
-    # ==========================================================
 
     def detect_angle(
         self,
@@ -151,10 +142,6 @@ class DeskewService:
 
         return angle
 
-    # ==========================================================
-    # Rotate Image
-    # ==========================================================
-
     def rotate(
         self,
         image: np.ndarray,
@@ -197,10 +184,6 @@ class DeskewService:
 
         return rotated
 
-    # ==========================================================
-    # Is Skewed
-    # ==========================================================
-
     def is_skewed(
         self,
         image_path: Path,
@@ -223,10 +206,6 @@ class DeskewService:
         )
 
         return abs(angle) > threshold
-
-    # ==========================================================
-    # Get Skew Angle
-    # ==========================================================
 
     def get_angle(
         self,

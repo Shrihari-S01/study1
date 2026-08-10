@@ -14,7 +14,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class AngularMasterMerger:
     """
     Merges master IDs and application options received from Angular into PHP payload.

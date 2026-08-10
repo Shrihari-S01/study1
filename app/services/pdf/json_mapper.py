@@ -7,7 +7,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class JSONMapper:
     """
     Stage 15: JSON Mapper for final API schema serialization.

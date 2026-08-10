@@ -31,7 +31,6 @@ from app.database.base import (
 if TYPE_CHECKING:
     from app.models.auction import Auction
 
-
 class Upload(
     Base,
     TimestampMixin,
@@ -42,19 +41,11 @@ class Upload(
 
     __tablename__ = "uploads"
 
-    # ==========================================================
-    # Primary Key
-    # ==========================================================
-
     id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid4()),
     )
-
-    # ==========================================================
-    # Upload Information
-    # ==========================================================
 
     upload_number: Mapped[str] = mapped_column(
     String(100),
@@ -90,10 +81,6 @@ class Upload(
         default=0,
     )
 
-    # ==========================================================
-    # File Paths
-    # ==========================================================
-
     original_file_path: Mapped[str] = mapped_column(
         Text,
         nullable=False,
@@ -108,10 +95,6 @@ class Upload(
         Text,
         default="",
     )
-
-    # ==========================================================
-    # Processing Status
-    # ==========================================================
 
     status: Mapped[str] = mapped_column(
         String(30),
@@ -149,20 +132,12 @@ class Upload(
         default="",
     )
 
-    # ==========================================================
-    # Relationship
-    # ==========================================================
-
     auctions: Mapped[list["Auction"]] = relationship(
         "Auction",
         back_populates="upload",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-
-    # ==========================================================
-    # String Representation
-    # ==========================================================
 
     def __repr__(
         self,

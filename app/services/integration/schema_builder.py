@@ -12,7 +12,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class CommonAISchemaBuilder:
     """
     Normalizes pipeline output variations into a consistent Common AI Schema dictionary.
@@ -22,20 +21,31 @@ class CommonAISchemaBuilder:
     def build_schema(raw_record: Dict[str, Any], lot_index: int = 1) -> Dict[str, Any]:
         """
         Extract and harmonize raw dictionary keys into standardized Common AI Schema.
+        Preserves 100% of non-empty extracted values.
         """
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
+
+        norm_raw = CanonicalAliasNormalizer.normalize_record_aliases(raw_record)
+
         def get_field(*keys, default: Any = "") -> Any:
             for k in keys:
-                if k in raw_record and raw_record[k] is not None:
-                    val = raw_record[k]
+                if k in norm_raw and norm_raw[k] is not None:
+                    val = norm_raw[k]
+                    if isinstance(val, (int, float)):
+                        if val == 0:
+                            continue
+                        return val
                     if isinstance(val, str):
                         s = val.strip()
                         if s and s.lower() not in {"null", "none", "n/a", "undefined"}:
                             return s
-                    else:
+                    elif val:
                         return val
             return default
 
-        schema: Dict[str, Any] = {
+        schema: Dict[str, Any] = dict(norm_raw)
+
+        schema.update({
             "lot_index": lot_index,
             "raw_id": get_field("id", "raw_id"),
             "auction_number": get_field("auction_no", "notice_auction_id", "auction_number", "auction_id"),
@@ -62,9 +72,9 @@ class CommonAISchemaBuilder:
                 "emd_amount", "emd_price", "pre_bid_emd", "emd_value", "deposit_amount"
             ),
             "currency": get_field("currency", default="INR"),
-            "borrower_name": get_field("borrower", "borrower_name", "borrower_s"),
+            "borrower_name": get_field("borrower", "borrower_name", "borrower_s", "applicant_name"),
             "seller_name": get_field("institution_seller", "institution_seller_name", "seller_name", "bank_name", "institution"),
-            "asset_location": get_field("assets_location", "location", "property_address", "address"),
+            "asset_location": get_field("assets_location", "product_location", "location", "property_address", "address"),
             "asset_type": get_field("asset_type", "asset_category"),
             "asset_category": get_field("asset_category", "asset_subcategory"),
             "description": get_field("auction_description", "auction_details", "description"),
@@ -109,7 +119,11 @@ class CommonAISchemaBuilder:
             "sum_of_carat_24": get_field("sum_of_carat_24"),
             "sum_of_net_weight_total": get_field("sum_of_net_weight_total"),
             "sum_of_gross_weight_total": get_field("sum_of_gross_weight_total"),
-        }
+        })
+
+        logger.debug("[%d] Built Common AI Schema for auction_number=%s", lot_index, schema["auction_number"])
+        return schema
+
 
         logger.debug("[%d] Built Common AI Schema for auction_number=%s", lot_index, schema["auction_number"])
         return schema

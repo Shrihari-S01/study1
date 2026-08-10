@@ -19,7 +19,6 @@ logger = get_logger(__name__)
 
 settings = get_settings()
 
-
 class AuctionSplitter:
     """
     Detect and split auction notices.
@@ -38,11 +37,6 @@ class AuctionSplitter:
         self.minimum_height = 200
 
         self.minimum_area = 50000
-
-
-    # ==========================================================
-    # Load Image
-    # ==========================================================
 
     def load_image(
         self,
@@ -64,9 +58,6 @@ class AuctionSplitter:
 
         return image
     
-    # ==========================================================
-    # Convert to Gray
-    # ==========================================================
 
     def gray(
         self,
@@ -84,9 +75,6 @@ class AuctionSplitter:
 
         )
     
-    # ==========================================================
-    # Threshold
-    # ==========================================================
 
     def threshold(
         self,
@@ -110,10 +98,6 @@ class AuctionSplitter:
 
         )[1]
     
-
-    # ==========================================================
-    # Connect Text Regions
-    # ==========================================================
 
     def morphology(
         self,
@@ -143,9 +127,6 @@ class AuctionSplitter:
 
         )
     
-    # ==========================================================
-    # Find Contours
-    # ==========================================================
 
     def find_contours(
         self,
@@ -167,10 +148,6 @@ class AuctionSplitter:
 
         return contours
     
-
-    # ==========================================================
-    # Split Newspaper
-    # ==========================================================
 
     def split(
         self,
@@ -242,10 +219,6 @@ class AuctionSplitter:
         return notices
     
 
-    # ==========================================================
-    # Extract Auction Regions
-    # ==========================================================
-
     def extract_regions(
         self,
         contours,
@@ -301,10 +274,6 @@ class AuctionSplitter:
         return notices
     
 
-    # ==========================================================
-    # Filter Auction Regions
-    # ==========================================================
-
     def filter_regions(
         self,
         notices: list[dict],
@@ -336,10 +305,6 @@ class AuctionSplitter:
         return filtered
     
 
-    # ==========================================================
-    # Region Area
-    # ==========================================================
-
     def area(
         self,
         notice: dict,
@@ -358,10 +323,6 @@ class AuctionSplitter:
 
         )
     
-
-    # ==========================================================
-    # Sort Notices
-    # ==========================================================
 
     def sort_regions(
         self,
@@ -385,10 +346,6 @@ class AuctionSplitter:
 
         )
     
-
-    # ==========================================================
-    # Merge Regions
-    # ==========================================================
 
     def merge_regions(
         self,
@@ -459,10 +416,6 @@ class AuctionSplitter:
         return merged
     
 
-    # ==========================================================
-    # Should Merge
-    # ==========================================================
-
     def should_merge(
         self,
         region1: dict,
@@ -531,11 +484,6 @@ class AuctionSplitter:
 
         return False
 
-
-    # ==========================================================
-    # Combine Regions
-    # ==========================================================
-
     def combine(
         self,
         region1: dict,
@@ -600,10 +548,6 @@ class AuctionSplitter:
         }
     
 
-    # ==========================================================
-    # Remove Duplicate Regions
-    # ==========================================================
-
     def remove_duplicates(
         self,
         notices: list[dict],
@@ -657,10 +601,6 @@ class AuctionSplitter:
         return unique
     
 
-    # ==========================================================
-    # Prepare Notices
-    # ==========================================================
-
     def prepare(
         self,
         notices: list[dict],
@@ -688,11 +628,6 @@ class AuctionSplitter:
         )
 
         return notices
-
-
-    # ==========================================================
-    # Save Auction Notices
-    # ==========================================================
 
     def save_notices(
         self,
@@ -830,12 +765,6 @@ class AuctionSplitter:
 
         return saved_notices
 
-
-
-    # ==========================================================
-    # Crop Auction
-    # ==========================================================
-
     def crop_notice(
         self,
         image: np.ndarray,
@@ -853,10 +782,6 @@ class AuctionSplitter:
 
         ]
     
-
-    # ==========================================================
-    # Create Split Folder
-    # ==========================================================
 
     def create_output_directory(
         self,
@@ -887,10 +812,6 @@ class AuctionSplitter:
         return directory
     
 
-    # ==========================================================
-    # Total Notices
-    # ==========================================================
-
     def count(
         self,
         notices: list[dict],
@@ -903,10 +824,6 @@ class AuctionSplitter:
             notices,
         )
     
-
-    # ==========================================================
-    # Validate Notice
-    # ==========================================================
 
     def validate_notice(
         self,
@@ -930,10 +847,6 @@ class AuctionSplitter:
 
         return True
     
-
-    # ==========================================================
-    # Process Newspaper
-    # ==========================================================
 
     def process(
         self,
@@ -982,10 +895,6 @@ class AuctionSplitter:
 
         return saved
     
-
-    # ==========================================================
-    # Draw Auction Boxes
-    # ==========================================================
 
     def draw_boxes(
         self,
@@ -1058,9 +967,6 @@ class AuctionSplitter:
 
         return output_path
     
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -1110,10 +1016,6 @@ class AuctionSplitter:
 
         }
 
-    # ==========================================================
-    # Split Folder
-    # ==========================================================
-
     def split_directory(
         self,
         upload_number: str,
@@ -1132,10 +1034,6 @@ class AuctionSplitter:
 
         )
     
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def is_ready(
         self,

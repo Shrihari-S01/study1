@@ -29,7 +29,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 def normalize_numeric(value: Any) -> Optional[str]:
     """
     Normalizes numeric monetary/price values to a canonical string representation.
@@ -65,7 +64,6 @@ def normalize_numeric(value: Any) -> Optional[str]:
                 pass
     return None
 
-
 def _parse_dt(val: Any) -> Optional[datetime]:
     if val in (None, ""):
         return None
@@ -87,7 +85,6 @@ def _parse_dt(val: Any) -> Optional[datetime]:
                 pass
     return None
 
-
 def _to_bool(val: Any) -> Optional[bool]:
     if val in (None, ""):
         return None
@@ -99,7 +96,6 @@ def _to_bool(val: Any) -> Optional[bool]:
     if s in {"n", "no", "false", "0"}:
         return False
     return None
-
 
 def compare_datetime(val1: Any, val2: Any) -> Tuple[str, str]:
     """
@@ -120,7 +116,6 @@ def compare_datetime(val1: Any, val2: Any) -> Tuple[str, str]:
 
     return "MISMATCH", f"Date mismatch: '{s1}' vs '{s2}'"
 
-
 def compare_numeric(val1: Any, val2: Any) -> Tuple[str, str]:
     """
     Normalizes numeric monetary/price strings into Decimals before comparison.
@@ -140,7 +135,6 @@ def compare_numeric(val1: Any, val2: Any) -> Tuple[str, str]:
 
     return "MISMATCH", f"Numeric mismatch: '{s1}' ({num1}) vs '{s2}' ({num2})"
 
-
 def compare_boolean(val1: Any, val2: Any) -> Tuple[str, str]:
     """
     Maps equivalent boolean representations (Y = Yes = True, N = No = False).
@@ -158,7 +152,6 @@ def compare_boolean(val1: Any, val2: Any) -> Tuple[str, str]:
 
     return "MISMATCH", f"Boolean mismatch: '{s1}' vs '{s2}'"
 
-
 def normalize_text_semantic(val: Any) -> str:
     """
     Strips extra whitespace, lowers case, restores legal abbreviations (M, s -> m/s).
@@ -171,7 +164,6 @@ def normalize_text_semantic(val: Any) -> str:
     s = re.sub(r"(?i)\bM\s*[\,\\\.\s]\s*s\b", "M/s", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s.lower()
-
 
 def normalize_location_semantic(val: Any) -> str:
     """
@@ -193,7 +185,6 @@ def normalize_location_semantic(val: Any) -> str:
     s = re.sub(r"[^\w\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s.lower()
-
 
 def compare_location(canonical_val: Any, mapped_val: Any) -> Tuple[str, str]:
     """
@@ -237,7 +228,6 @@ def compare_location(canonical_val: Any, mapped_val: Any) -> Tuple[str, str]:
 
     return "MISMATCH", f"Geographic mismatch: '{m_raw}' vs '{c_raw}'"
 
-
 def compare_text(val1: Any, val2: Any) -> Tuple[str, str]:
     """
     Ignores whitespace, case, punctuation differences while preserving content.
@@ -257,7 +247,6 @@ def compare_text(val1: Any, val2: Any) -> Tuple[str, str]:
 
     return "MISMATCH", f"Text mismatch: '{s1}' vs '{s2}'"
 
-
 class FieldConsistencyResult(NamedTuple):
     field: str
     severity: str  # 'CRITICAL' | 'IMPORTANT' | 'OPTIONAL'
@@ -267,7 +256,6 @@ class FieldConsistencyResult(NamedTuple):
     transformation: str
     status: str  # 'MATCH' | 'NORMALIZED_MATCH' | 'WARNING' | 'CRITICAL_ERROR'
     detail: str
-
 
 @dataclass
 class ConsistencyReport:
@@ -368,7 +356,6 @@ class ConsistencyReport:
         """Backward compatibility alias for warning_count."""
         return self.warning_count
 
-
 class MappingConsistencyValidator:
     """
     End-to-End Semantic Consistency Validator ensuring zero data loss on critical fields.
@@ -434,6 +421,24 @@ class MappingConsistencyValidator:
             canonical_val = str(common_schema.get(ai_key) or norm_schema.get(ai_key) or "").strip()
             mapped_val = str(php_payload.get(php_key) or "").strip()
 
+            # Empty critical fields are CRITICAL_ERROR
+            if not mapped_val and severity == "CRITICAL":
+                status = "CRITICAL_ERROR"
+                critical_errors += 1
+                field_results.append(
+                    FieldConsistencyResult(
+                        field=php_key,
+                        severity=severity,
+                        confidence=confidence_score,
+                        canonical_value=canonical_val,
+                        mapped_value="",
+                        transformation="Mandatory schema check",
+                        status=status,
+                        detail="Critical field missing/empty in mapped payload.",
+                    )
+                )
+                continue
+
             # Skip checking empty optional fields
             if not canonical_val and severity == "OPTIONAL":
                 field_results.append(
@@ -480,6 +485,7 @@ class MappingConsistencyValidator:
                 else:
                     status = "MATCH"
                     detail = "Optional field variation ignored."
+
 
             field_results.append(
                 FieldConsistencyResult(

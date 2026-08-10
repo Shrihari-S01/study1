@@ -22,7 +22,6 @@ from app.services.pdf.pdf_parser_service import PDFParserService
 
 logger = get_logger(__name__)
 
-
 class AuctionParser:
     """
     Parse OCR text and PDF documents into structured auction fields.
@@ -54,10 +53,6 @@ class AuctionParser:
         """
         logger.info("Routing file to PDF Parser Service (Stages 1 - 18).")
         return self.pdf_service.process_pdf_file(pdf_path, ocr_service=ocr_service)
-
-    # ==========================================================
-    # Supported Fields
-    # ==========================================================
 
     def supported_fields(
         self,
@@ -182,10 +177,6 @@ class AuctionParser:
 
         ]
 
-    # ==========================================================
-    # Empty Structure
-    # ==========================================================
-
     def empty_record(
         self,
     ) -> dict:
@@ -203,9 +194,6 @@ class AuctionParser:
 
         }
     
-    # ==========================================================
-    # Reset Record
-    # ==========================================================
 
     def reset(
         self,
@@ -219,11 +207,6 @@ class AuctionParser:
             self.empty_record()
 
         )
-
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def is_ready(
         self,
@@ -251,9 +234,6 @@ class AuctionParser:
         )
 
     
-    # ==========================================================
-    # Clean OCR Text
-    # ==========================================================
 
     def clean_text(
         self,
@@ -293,11 +273,6 @@ class AuctionParser:
 
         return text.strip()
 
-
-    # ==========================================================
-    # Remove Extra Spaces
-    # ==========================================================
-
     def remove_extra_spaces(
         self,
         text: str,
@@ -325,10 +300,6 @@ class AuctionParser:
 
         return text
     
-
-    # ==========================================================
-    # Remove Special Characters
-    # ==========================================================
 
     def remove_special_characters(
         self,
@@ -364,11 +335,6 @@ class AuctionParser:
         return text
     
 
-
-    # ==========================================================
-    # Normalize Currency
-    # ==========================================================
-
     def normalize_currency(
         self,
         text: str,
@@ -398,11 +364,6 @@ class AuctionParser:
 
         return text
 
-
-    # ==========================================================
-    # Normalize Dates
-    # ==========================================================
-
     def normalize_dates(
         self,
         text: str,
@@ -428,10 +389,6 @@ class AuctionParser:
 
         return text
     
-
-    # ==========================================================
-    # Fix Common OCR Errors
-    # ==========================================================
 
     def fix_common_ocr_errors(
         self,
@@ -476,11 +433,6 @@ class AuctionParser:
 
         return upper
 
-
-    # ==========================================================
-    # Split Text
-    # ==========================================================
-
     def split_lines(
         self,
         text: str,
@@ -498,12 +450,6 @@ class AuctionParser:
             if line.strip()
 
         ]
-
-
-
-    # ==========================================================
-    # Remove Empty Lines
-    # ==========================================================
 
     def remove_empty_lines(
         self,
@@ -524,10 +470,6 @@ class AuctionParser:
         ]
     
 
-    # ==========================================================
-    # Join Lines
-    # ==========================================================
-
     def join_lines(
         self,
         lines: list[str],
@@ -538,9 +480,6 @@ class AuctionParser:
 
         return "\n".join(lines)
     
-    # ==========================================================
-    # Preprocess OCR
-    # ==========================================================
 
     def preprocess(
         self,
@@ -566,9 +505,6 @@ class AuctionParser:
             lines,
         )
     
-    # ==========================================================
-    # Regex Extraction
-    # ==========================================================
 
     def regex_extract(
         self,
@@ -599,11 +535,6 @@ class AuctionParser:
             )
 
             return self.empty_record()
-
-
-    # ==========================================================
-    # LLM Extraction
-    # ==========================================================
 
     def llm_extract(
         self,
@@ -637,10 +568,117 @@ class AuctionParser:
 
             return self.empty_record()
 
+    def parse_llm_json(
+        self,
+        text_json_str: str,
+        ocr_text: str = "",
+    ) -> list[dict] | dict:
+        """
+        Parse structured JSON string returned by Text LLM (Fast Path).
+        Normalizes aliases, merges common notice header fields, resolves financial fallbacks,
+        runs OCR regex fallbacks for missing critical fields, and returns canonical auction lot dictionaries.
+        """
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
 
-    # ==========================================================
-    # Merge Results
-    # ==========================================================
+        if not text_json_str or not text_json_str.strip():
+            return [self.empty_record()]
+
+        try:
+            llm_result = self.llm.parse_json(text_json_str)
+            if not isinstance(llm_result, dict):
+                return [self.empty_record()]
+
+            common = {}
+            for group_key in [
+                "common_fields",
+                "event_and_institution_details",
+                "auction_mechanics_and_dates",
+                "emd_and_payment_details",
+                "portal_specific_fields"
+            ]:
+                if group_key in llm_result and isinstance(llm_result[group_key], dict):
+                    common.update(llm_result[group_key])
+
+            # Also top-level key-values that are not 'auctions'
+            for k, v in llm_result.items():
+                if k != "auctions" and v and not isinstance(v, (list, dict)):
+                    common[k] = v
+
+            llm_auctions = llm_result.get("auctions", [])
+            if not llm_auctions or not isinstance(llm_auctions, list):
+                # If top-level contains single auction fields directly
+                llm_auctions = [llm_result]
+
+            parsed_auctions = []
+            for idx, raw_auc in enumerate(llm_auctions):
+                if not isinstance(raw_auc, dict):
+                    raw_auc = {}
+
+                # Combine common and auction lot fields
+                combined = {}
+                combined.update(common)
+                combined.update(raw_auc)
+
+                # Canonical alias normalization
+                normalized = CanonicalAliasNormalizer.normalize_record_aliases(combined)
+
+                # OCR Regex Fallbacks if critical fields missing from LLM JSON
+                if ocr_text:
+                    if not normalized.get("borrower_name"):
+                        regex_b = self.regex.borrower_name(ocr_text)
+                        if regex_b:
+                            normalized["borrower_name"] = regex_b
+                            normalized["borrower"] = regex_b
+
+                    if not normalized.get("reserve_price"):
+                        regex_rp = self.regex.reserve_price(ocr_text)
+                        if regex_rp:
+                            normalized["reserve_price"] = regex_rp
+                            normalized["reserver_price"] = regex_rp
+
+                    if not normalized.get("emd_amount") and not normalized.get("emd_price"):
+                        regex_emd = self.regex.emd(ocr_text)
+                        if regex_emd:
+                            normalized["emd_amount"] = regex_emd
+                            normalized["emd_price"] = regex_emd
+
+                    if not normalized.get("auction_date") and not normalized.get("auction_start_datetime"):
+                        regex_date = self.regex.auction_date(ocr_text)
+                        if regex_date:
+                            normalized["auction_date"] = regex_date
+
+                # Math Fallback: EMD is standard 10% of Reserve Price if missing
+                if (not normalized.get("emd_price") or str(normalized.get("emd_price")) in ("0", "0.0", "None", "")) and normalized.get("reserve_price"):
+                    try:
+                        rp_val = float(str(normalized["reserve_price"]).replace(",", ""))
+                        if rp_val > 0:
+                            emd_calc = round(rp_val * 0.10, 2)
+                            normalized["emd_price"] = emd_calc
+                            normalized["emd_amount"] = emd_calc
+                            normalized["pre_bid_emd"] = emd_calc
+                    except Exception:
+                        pass
+
+                # Default increment price fallback if missing
+                if not normalized.get("increment_price") or str(normalized.get("increment_price")) in ("0", "0.0", "None", ""):
+                    normalized["increment_price"] = common.get("increment_price") or 50000.0
+                    normalized["bid_increment"] = normalized["increment_price"]
+
+                # Fill missing supported fields
+                flat_auc = self.fill_missing(normalized)
+
+                # Map fields to DB attributes
+                mapped_auc = self.map_fields(flat_auc)
+                mapped_auc["confidence_score"] = 0.95
+                parsed_auctions.append(mapped_auc)
+
+
+            return parsed_auctions if len(parsed_auctions) > 0 else [self.empty_record()]
+
+        except Exception as exc:
+            logger.exception("AuctionParser.parse_llm_json failed: %s", exc)
+            return [self.empty_record()]
+
 
     def merge_results(
         self,
@@ -683,10 +721,6 @@ class AuctionParser:
         return merged
     
 
-    # ==========================================================
-    # Fill Missing Fields
-    # ==========================================================
-
     def fill_missing(
         self,
         data: dict,
@@ -707,12 +741,6 @@ class AuctionParser:
 
         return data
 
-
-
-    # ==========================================================
-    # Apply Field Mapping
-    # ==========================================================
-
     def map_fields(
         self,
         data: dict,
@@ -726,10 +754,6 @@ class AuctionParser:
             data,
         )
     
-
-    # ==========================================================
-    # Confidence
-    # ==========================================================
 
     def calculate_confidence(
         self,
@@ -755,10 +779,6 @@ class AuctionParser:
 
         )
     
-
-    # ==========================================================
-    # Parse OCR
-    # ==========================================================
 
     def split_ocr_text_into_lots(self, text: str) -> list[str]:
         """
@@ -1501,13 +1521,14 @@ class AuctionParser:
                     continue
                 chunk_regex = self.regex_extract(chunk, global_text=global_text)
                 # Keep common fields from full page (including key aliases)
-                for common_field in ["bank_name", "branch_name", "borrower_name", "emd_bank_name", "emd_ifsc", "emd_account_no", "authorized_officer_name", "authorized_officer_number", "contact_number", "ifsc", "authorized_officer", "submit_application", "auction_start_date_time", "auction_end_date_time", "auction_date"]:
+                for common_field in ["bank_name", "branch_name", "emd_bank_name", "emd_ifsc", "authorized_officer_name", "authorized_officer_number", "contact_number", "ifsc", "authorized_officer", "submit_application", "auction_start_date_time", "auction_end_date_time", "auction_date"]:
                     # Always overwrite header-level notice-wide fields to ensure consistency
-                    if common_field in ["bank_name", "branch_name", "borrower_name", "emd_bank_name", "emd_ifsc", "emd_account_no", "authorized_officer_name", "authorized_officer_number"]:
+                    if common_field in ["bank_name", "branch_name", "emd_bank_name", "emd_ifsc", "authorized_officer_name", "authorized_officer_number"]:
                         if regex_result.get(common_field):
                             chunk_regex[common_field] = regex_result[common_field]
                     elif not chunk_regex.get(common_field):
                         chunk_regex[common_field] = regex_result.get(common_field, "")
+
                 llm_auctions.append(chunk_regex)
             if not llm_auctions:
                 llm_auctions = [{}]
@@ -1531,16 +1552,19 @@ class AuctionParser:
                     flat_auc[f] = ""
 
             # Merge regex results (safe merge)
-            # Only merge target items like reserve_price from regex if empty or 1 auction
+            # Only merge target items from regex if field is empty or strictly a global document header field
             for field in self.supported_fields():
                 reg_val = regex_result.get(field, "")
                 if reg_val:
                     is_shared = field in [
-                        "bank_name", "branch_name", "emd_bank_name",
-                        "emd_account_no", "emd_ifsc", "contact_person",
-                        "contact_number", "email", "authorized_officer"
+                        "bank_name", "branch_name", "emd_bank_name", "emd_ifsc",
+                        "contact_person", "contact_number", "email", "authorized_officer"
                     ]
-                    if is_shared or len(llm_auctions) == 1 or not flat_auc.get(field):
+                    # NEVER overwrite emd_account_no or borrower_name with global page-level regex values
+                    if (is_shared or len(llm_auctions) == 1) and field not in {"emd_account_no", "borrower_name", "loan_account_number"}:
+                        if not flat_auc.get(field):
+                            flat_auc[field] = reg_val
+                    elif not flat_auc.get(field):
                         flat_auc[field] = reg_val
 
             # Fill missing
@@ -1579,12 +1603,7 @@ class AuctionParser:
             "llm": llm_result,
         }
 
-
-    # ==========================================================
-    # Parse Vision (Direct Scrape)
-    # ==========================================================
     # STAGE 1, 2, 5, 6: IMAGE PIPELINE SEGMENTATION & SHARED METADATA
-    # ==========================================================
 
     def detect_ocr_auction_blocks(self, text: str) -> list[str]:
         """
@@ -1744,8 +1763,6 @@ class AuctionParser:
                 pass
 
         return shared
-
-    # ==========================================================
 
     def parse_vision(
         self,
@@ -2323,9 +2340,6 @@ class AuctionParser:
         }
 
     
-    # ==========================================================
-    # Validate Record
-    # ==========================================================
 
     def validate(
         self,
@@ -2352,11 +2366,6 @@ class AuctionParser:
             )
 
             return data
-
-
-    # ==========================================================
-    # Normalize Values
-    # ==========================================================
 
     def normalize(
         self,
@@ -2388,12 +2397,6 @@ class AuctionParser:
 
         return normalized
 
-
-
-    # ==========================================================
-    # Required Fields
-    # ==========================================================
-
     def required_fields(
         self,
     ) -> list[str]:
@@ -2414,11 +2417,6 @@ class AuctionParser:
             "property_address",
 
         ]
-
-
-    # ==========================================================
-    # Missing Fields
-    # ==========================================================
 
     def missing_fields(
         self,
@@ -2445,10 +2443,6 @@ class AuctionParser:
 
         return missing 
     
-
-    # ==========================================================
-    # Record Completeness
-    # ==========================================================
 
     def completeness(
         self,
@@ -2478,10 +2472,6 @@ class AuctionParser:
 
         )
     
-
-    # ==========================================================
-    # Quality Score
-    # ==========================================================
 
     def quality_score(
         self,
@@ -2522,9 +2512,6 @@ class AuctionParser:
             2,
         )
     
-    # ==========================================================
-    # Validation Summary
-    # ==========================================================
 
     def validation_summary(
         self,
@@ -2556,11 +2543,6 @@ class AuctionParser:
 
         }
 
-
-    # ==========================================================
-    # Database Record
-    # ==========================================================
-
     def database_record(
         self,
         data: list[dict] | dict,
@@ -2581,10 +2563,6 @@ class AuctionParser:
 
         return data
     
-
-    # ==========================================================
-    # Process Auction
-    # ==========================================================
 
     def process(
         self,
@@ -2637,11 +2615,6 @@ class AuctionParser:
 
         return parsed
 
-
-    # ==========================================================
-    # Process Vision (Direct Scrape)
-    # ==========================================================
-
     def process_vision(
         self,
         base64_image: str,
@@ -2681,11 +2654,6 @@ class AuctionParser:
 
         return parsed
 
-
-    # ==========================================================
-    # Batch Process
-    # ==========================================================
-
     def process_batch(
         self,
         texts: list[str],
@@ -2724,10 +2692,6 @@ class AuctionParser:
 
         return results 
     
-
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -2777,9 +2741,6 @@ class AuctionParser:
 
         }
     
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def health_check(
         self,
@@ -2803,10 +2764,6 @@ class AuctionParser:
             "llm": self.llm.is_ready(),
 
         }
-
-    # ==========================================================
-    # Information
-    # ==========================================================
 
     def info(
         self,
@@ -2833,9 +2790,6 @@ class AuctionParser:
 
         }
     
-    # ==========================================================
-    # Reset
-    # ==========================================================
 
     def clear(
         self,
@@ -2850,9 +2804,6 @@ class AuctionParser:
 
         return self.empty_record()
     
-    # ==========================================================
-    # Close
-    # ==========================================================
 
     def close(
         self,

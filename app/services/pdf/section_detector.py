@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class SectionDetector:
     """
     Detects section boundaries using structural markers, independent of page numbers.

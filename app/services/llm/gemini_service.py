@@ -18,7 +18,6 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
-
 class GeminiService:
     """
     Gemini LLM wrapper.
@@ -37,10 +36,6 @@ class GeminiService:
         self.temperature = 0.0
         self.max_tokens = 4096
 
-    # ==========================================================
-    # Ready Check
-    # ==========================================================
-
     def is_ready(
         self,
     ) -> bool:
@@ -48,10 +43,6 @@ class GeminiService:
         Check Gemini client settings.
         """
         return bool(self.api_key)
-
-    # ==========================================================
-    # Model Information
-    # ==========================================================
 
     def model_info(
         self,
@@ -65,10 +56,6 @@ class GeminiService:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
-
-    # ==========================================================
-    # Supported Fields
-    # ==========================================================
 
     def supported_fields(
         self,
@@ -164,10 +151,6 @@ class GeminiService:
             "pin_code",
         ]
 
-    # ==========================================================
-    # Empty Record
-    # ==========================================================
-
     def empty_record(
         self,
     ) -> dict:
@@ -234,11 +217,15 @@ class GeminiService:
                     "district": "",
                     "state": "",
                     "pin_code": "",
+                    "demand_notice_date": "",
+                    "symbolic_possession_date": "",
+                    "total_closure_amount": "",
                     "emd_bank_name": "",
                     "emd_account_no": "",
                     "emd_ifsc": "",
                     "authorized_officer_name": "",
                     "authorized_officer_number": "",
+
                     
                     # Category-specific fields inside individual auction items
                     "asset_subcategory": "",
@@ -283,10 +270,6 @@ class GeminiService:
             self.empty_record(),
             indent=4,
         )
-
-    # ==========================================================
-    # Vision Completion (Direct Scrape)
-    # ==========================================================
 
     def vision_completion(
         self,
@@ -445,10 +428,6 @@ class GeminiService:
             logger.exception("Gemini API response parsing failed.")
             raise RuntimeError(f"Gemini Error : {exc}") from exc
 
-    # ==========================================================
-    # Targeted Re-extraction (Focus on 4 Key Fields)
-    # ==========================================================
-
     def targeted_reextraction(
         self,
         base64_image: str,
@@ -536,10 +515,6 @@ class GeminiService:
             logger.warning("Targeted re-extraction request failed: %s", exc)
 
         return {}
-
-    # ==========================================================
-    # Text-Based Extraction (PDF Catalogue Pipeline B)
-    # ==========================================================
 
     def extract_pdf_catalogue(
         self,
@@ -781,10 +756,6 @@ class GeminiService:
 
         return self.empty_record()
 
-    # ==========================================================
-    # Text-Based Extraction
-    # ==========================================================
-
     def extract(
         self,
         text: str,
@@ -926,10 +897,6 @@ class GeminiService:
         except Exception as exc:
             logger.exception("Gemini API response parsing failed.")
             raise RuntimeError(f"Gemini Error : {exc}") from exc
-
-    # ==========================================================
-    # Parse JSON
-    # ==========================================================
 
     def parse_json(
         self,

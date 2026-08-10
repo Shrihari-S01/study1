@@ -7,7 +7,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PDFValidator:
     """
     Validates PDF extraction results per lot record before JSON output.

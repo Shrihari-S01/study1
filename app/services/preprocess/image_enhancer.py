@@ -15,7 +15,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class ImageEnhancer:
     """
     Enhance newspaper image quality.
@@ -28,10 +27,6 @@ class ImageEnhancer:
         logger.info(
             "Image Enhancer Initialized."
         )
-
-    # ==========================================================
-    # Enhance Image
-    # ==========================================================
 
     def process(
         self,
@@ -82,9 +77,57 @@ class ImageEnhancer:
             logger.warning("Adaptive crop enhancement failed for %s: %s", crop_image_path, exc)
             return crop_image_path
 
-    # ==========================================================
-    # Deskew Image
-    # ==========================================================
+    def expand_and_enhance_crop(
+        self,
+        full_image_path: str,
+        bbox: dict,
+        margin_percent: float = 0.15,
+        output_crop_path: str = "",
+    ) -> str:
+        """
+        Expands crop boundaries by margin_percent on all sides and applies adaptive contrast enhancement.
+        Useful when OCR confidence is 0% or text is cut off at borders.
+        """
+        try:
+            full_img = cv2.imread(full_image_path)
+            if full_img is None:
+                return output_crop_path or full_image_path
+
+            h, w = full_img.shape[:2]
+            x1 = float(bbox.get("x", 0))
+            y1 = float(bbox.get("y", 0))
+            bw = float(bbox.get("width", w))
+            bh = float(bbox.get("height", h))
+            x2 = x1 + bw
+            y2 = y1 + bh
+
+            # Expand boundaries by margin_percent
+            pad_w = bw * margin_percent
+            pad_h = bh * margin_percent
+
+            new_x1 = max(0, int(x1 - pad_w))
+            new_y1 = max(0, int(y1 - pad_h))
+            new_x2 = min(w, int(x2 + pad_w))
+            new_y2 = min(h, int(y2 + pad_h))
+
+            expanded_crop = full_img[new_y1:new_y2, new_x1:new_x2]
+            if expanded_crop.size == 0:
+                return output_crop_path or full_image_path
+
+            # Apply CLAHE and sharpening
+            gray = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+            sharpened = cv2.filter2D(enhanced, -1, kernel)
+
+            save_path = output_crop_path or full_image_path.replace(".jpg", "_expanded_crop.jpg").replace(".png", "_expanded_crop.png")
+            cv2.imwrite(save_path, sharpened)
+            logger.info("Saved expanded crop (%dx%d padded to %dx%d): %s", int(bw), int(bh), new_x2 - new_x1, new_y2 - new_y1, save_path)
+            return save_path
+        except Exception as exc:
+            logger.warning("Expanded crop creation failed: %s", exc)
+            return output_crop_path or full_image_path
 
     def deskew(
         self,
@@ -141,11 +184,6 @@ class ImageEnhancer:
             logger.warning("Deskewing failed, returning original image: %s", exc)
             return image
 
-
-    # ==========================================================
-    # Contrast Enhancement
-    # ==========================================================
-
     def enhance_contrast(
         self,
         image: np.ndarray,
@@ -165,10 +203,6 @@ class ImageEnhancer:
         return clahe.apply(
             image,
         )
-
-    # ==========================================================
-    # Sharpen
-    # ==========================================================
 
     def sharpen(
         self,
@@ -204,10 +238,6 @@ class ImageEnhancer:
 
         )
 
-    # ==========================================================
-    # Resize
-    # ==========================================================
-
     def resize(
         self,
         image: np.ndarray,
@@ -230,10 +260,6 @@ class ImageEnhancer:
             interpolation=cv2.INTER_CUBIC,
 
         )
-
-    # ==========================================================
-    # Gamma Correction
-    # ==========================================================
 
     def gamma_correction(
         self,
@@ -268,10 +294,6 @@ class ImageEnhancer:
 
         )
 
-    # ==========================================================
-    # Histogram Equalization
-    # ==========================================================
-
     def equalize_histogram(
         self,
         image: np.ndarray,
@@ -283,10 +305,6 @@ class ImageEnhancer:
         return cv2.equalizeHist(
             image,
         )
-
-    # ==========================================================
-    # Morphological Enhancement
-    # ==========================================================
 
     def morphology(
         self,
@@ -313,10 +331,6 @@ class ImageEnhancer:
             kernel,
 
         )
-
-    # ==========================================================
-    # Unsharp Mask
-    # ==========================================================
 
     def unsharp_mask(
         self,
@@ -349,10 +363,6 @@ class ImageEnhancer:
             0,
 
         )
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def is_ready(
         self,

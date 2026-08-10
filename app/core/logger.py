@@ -10,21 +10,11 @@ from pathlib import Path
 
 from app.core.config import get_settings
 
-
-# ==========================================================
-# Settings
-# ==========================================================
-
 settings = get_settings()
 
 LOG_DIR = settings.log_dir
 
 LOG_FILE = LOG_DIR / "auction_ai.log"
-
-
-# ==========================================================
-# Logger Configuration
-# ==========================================================
 
 def configure_logging() -> None:
     """
@@ -51,10 +41,6 @@ def configure_logging() -> None:
 
     )
 
-    # ======================================================
-    # Console Handler
-    # ======================================================
-
     console_handler = logging.StreamHandler()
 
     console_handler.setLevel(settings.log_level)
@@ -62,10 +48,6 @@ def configure_logging() -> None:
     console_handler.setFormatter(formatter)
 
     root_logger.addHandler(console_handler)
-
-    # ======================================================
-    # File Handler
-    # ======================================================
 
     file_handler = TimedRotatingFileHandler(
 
@@ -87,11 +69,6 @@ def configure_logging() -> None:
 
     root_logger.addHandler(file_handler)
 
-
-# ==========================================================
-# Logger Factory
-# ==========================================================
-
 def get_logger(
     name: str,
 ) -> logging.Logger:
@@ -111,7 +88,6 @@ def get_logger(
     configure_logging()
 
     return logging.getLogger(name)
-
 
 class PipelineStageTimer:
     """

@@ -13,11 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import get_db
 
-
-# ==========================================================
-# Database Session Dependency
-# ==========================================================
-
 DbSession = Annotated[
     AsyncSession,
     Depends(get_db),

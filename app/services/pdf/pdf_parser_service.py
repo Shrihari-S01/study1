@@ -8,7 +8,6 @@ from app.services.pdf.pdf_pipeline import PDFPipeline
 
 logger = get_logger(__name__)
 
-
 class PDFParserService:
     """
     Entry point service for PDF Auction Processing Pipeline Version 2.0.

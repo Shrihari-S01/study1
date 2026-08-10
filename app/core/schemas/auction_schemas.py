@@ -74,7 +74,6 @@ PROPERTY_FIELDS = [
     "vendor_name", "payment_type"
 ]
 
-
 def format_date_to_dmy(val, include_time=False):
     if val in (None, ""):
         return None
@@ -102,7 +101,6 @@ def format_date_to_dmy(val, include_time=False):
                 return m.group(0)
         return s_val
 
-
 def clean_numeric(val):
     if val in (None, ""):
         return None
@@ -118,7 +116,6 @@ def clean_numeric(val):
         return None
     except Exception:
         return None
-
 
 def build_pipeline_response(result: dict) -> dict:
     """

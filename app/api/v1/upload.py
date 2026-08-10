@@ -27,11 +27,6 @@ router = APIRouter(
     tags=["Upload"],
 )
 
-
-# ==========================================================
-# Upload Auction Newspaper
-# ==========================================================
-
 @router.post(
     "/",
     response_model=APIResponse,
@@ -117,11 +112,6 @@ async def upload_image(
 
         )
 
-
-# ==========================================================
-# Upload Auction Document (PDF)
-# ==========================================================
-
 @router.post(
     "/document/",
     response_model=APIResponse,
@@ -193,4 +183,3 @@ async def upload_document(
 
         )
 
-

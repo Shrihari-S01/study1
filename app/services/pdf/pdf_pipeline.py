@@ -28,13 +28,11 @@ from app.services.pdf.json_mapper import JSONMapper
 
 logger = get_logger(__name__)
 
-
 def safe_print(msg: str):
     try:
         print(msg)
     except Exception:
         pass
-
 
 class PDFPipeline:
     """

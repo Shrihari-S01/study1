@@ -13,7 +13,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class ResponseAggregator:
     """
     Aggregates per-lot processing results into consolidated Angular API response.

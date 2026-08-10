@@ -317,7 +317,6 @@ PHP_SCHEMA_SPEC: Dict[str, Dict[str, Any]] = {
     "p_remarks": {"type": "REMARKS", "max_length": 255},
 }
 
-
 class CentralizedPHPPayloadNormalizer:
     """
     Centralized schema-driven payload normalizer and datatype converter.

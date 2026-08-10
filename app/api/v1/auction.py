@@ -26,11 +26,6 @@ router = APIRouter(
     tags=["Auction"],
 )
 
-
-# ==========================================================
-# Get All Auctions
-# ==========================================================
-
 @router.get(
     "/",
     response_model=APIResponse[List[AuctionResponse]],
@@ -59,11 +54,6 @@ async def get_all_auctions(
             detail=str(exc),
         )
 
-
-# ==========================================================
-# Auction Statistics
-# ==========================================================
-
 @router.get(
     "/statistics",
     response_model=APIResponse,
@@ -90,11 +80,6 @@ async def auction_statistics(
             status_code=500,
             detail=str(exc),
         )
-
-
-# ==========================================================
-# Auction Count
-# ==========================================================
 
 @router.get(
     "/count",
@@ -125,11 +110,6 @@ async def auction_count(
             detail=str(exc),
         )
 
-
-# ==========================================================
-# Get Auctions By Upload ID
-# ==========================================================
-
 @router.get(
     "/upload/{upload_id}",
     response_model=APIResponse[List[AuctionResponse]],
@@ -159,11 +139,6 @@ async def get_auctions_by_upload(
             detail=str(exc),
         )
 
-
-# ==========================================================
-# Search Auctions
-# ==========================================================
-
 @router.get(
     "/search/{keyword}",
     response_model=APIResponse[List[AuctionResponse]],
@@ -192,11 +167,6 @@ async def search_auctions(
             status_code=500,
             detail=str(exc),
         )
-
-
-# ==========================================================
-# Get Auction By ID
-# ==========================================================
 
 @router.get(
     "/{auction_id}",
@@ -234,11 +204,6 @@ async def get_auction(
             status_code=500,
             detail=str(exc),
         )
-
-
-# ==========================================================
-# Delete Auction
-# ==========================================================
 
 @router.delete(
     "/{auction_id}",

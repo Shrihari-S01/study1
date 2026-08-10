@@ -17,7 +17,6 @@ from app.core.schemas.auction_schemas import build_pipeline_response
 
 logger = get_logger(__name__)
 
-
 class DocumentPipeline:
     """
     Document processing pipeline delegating directly to PDFParserService (Stages 1 - 16).

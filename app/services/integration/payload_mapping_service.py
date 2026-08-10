@@ -17,7 +17,6 @@ from app.schemas.integration_schemas import IntegrationMasterData
 
 logger = get_logger(__name__)
 
-
 class PayloadMappingService:
     """
     Dedicated mapping service responsible for transforming AI extraction outputs

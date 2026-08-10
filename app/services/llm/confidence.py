@@ -11,7 +11,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class ConfidenceCalculator:
     """
     Calculate confidence scores for
@@ -29,10 +28,6 @@ class ConfidenceCalculator:
         self.regex_weight = 0.70
 
         self.llm_weight = 0.30
-
-    # ==========================================================
-    # Supported Fields
-    # ==========================================================
 
     def supported_fields(
         self,
@@ -104,10 +99,6 @@ class ConfidenceCalculator:
         ]
     
 
-    # ==========================================================
-    # Empty Record
-    # ==========================================================
-
     def empty_record(
         self,
     ) -> dict:
@@ -125,11 +116,6 @@ class ConfidenceCalculator:
 
         }
 
-
-    # ==========================================================
-    # Ready Check
-    # ==========================================================
-
     def is_ready(
         self,
     ) -> bool:
@@ -139,10 +125,6 @@ class ConfidenceCalculator:
 
         return True
     
-
-    # ==========================================================
-    # Calculate Confidence
-    # ==========================================================
 
     def calculate(
         self,
@@ -192,10 +174,6 @@ class ConfidenceCalculator:
 
         return confidence
     
-
-    # ==========================================================
-    # Field Confidence
-    # ==========================================================
 
     def field_confidence(
         self,
@@ -250,10 +228,6 @@ class ConfidenceCalculator:
         )
     
 
-    # ==========================================================
-    # Regex Confidence
-    # ==========================================================
-
     def regex_confidence(
         self,
         value: str,
@@ -274,10 +248,6 @@ class ConfidenceCalculator:
 
         return 1.0
     
-
-    # ==========================================================
-    # LLM Confidence
-    # ==========================================================
 
     def llm_confidence(
         self,
@@ -332,10 +302,6 @@ class ConfidenceCalculator:
         return score
     
 
-    # ==========================================================
-    # Weighted Confidence
-    # ==========================================================
-
     def weighted_confidence(
         self,
         regex_score: float,
@@ -364,10 +330,6 @@ class ConfidenceCalculator:
         )
     
 
-    # ==========================================================
-    # Confidence Label
-    # ==========================================================
-
     def confidence_label(
         self,
         score: float,
@@ -395,10 +357,6 @@ class ConfidenceCalculator:
         return "Very Low"
     
 
-    # ==========================================================
-    # Available Fields
-    # ==========================================================
-
     def available_fields(
         self,
         result: dict,
@@ -423,9 +381,6 @@ class ConfidenceCalculator:
 
         )
     
-    # ==========================================================
-    # Missing Fields
-    # ==========================================================
 
     def missing_fields(
         self,
@@ -444,11 +399,6 @@ class ConfidenceCalculator:
             result,
 
         )
-
-
-    # ==========================================================
-    # Summary
-    # ==========================================================
 
     def summary(
         self,
@@ -484,11 +434,6 @@ class ConfidenceCalculator:
 
         }
 
-
-    # ==========================================================
-    # Overall Confidence
-    # ==========================================================
-
     def overall(
         self,
         confidence: dict,
@@ -522,9 +467,6 @@ class ConfidenceCalculator:
 
         )
     
-    # ==========================================================
-    # Batch Confidence
-    # ==========================================================
 
     def batch_confidence(
         self,
@@ -581,10 +523,6 @@ class ConfidenceCalculator:
 
         }
 
-    # ==========================================================
-    # Statistics
-    # ==========================================================
-
     def statistics(
         self,
         confidence: dict,
@@ -620,10 +558,6 @@ class ConfidenceCalculator:
         }
     
 
-    # ==========================================================
-    # Version
-    # ==========================================================
-
     def version(
         self,
     ) -> dict:
@@ -644,10 +578,6 @@ class ConfidenceCalculator:
         }
     
 
-    # ==========================================================
-    # Health Check
-    # ==========================================================
-
     def health_check(
         self,
     ) -> dict:
@@ -666,10 +596,6 @@ class ConfidenceCalculator:
         }
     
 
-    # ==========================================================
-    # Reset
-    # ==========================================================
-
     def reset(
         self,
     ) -> bool:
@@ -683,10 +609,6 @@ class ConfidenceCalculator:
 
         return True 
     
-
-    # ==========================================================
-    # Pipeline
-    # ==========================================================
 
     def process(
         self,

@@ -20,7 +20,6 @@ logger = get_logger(__name__)
 # Session TTL: 2 Hours (7200 Seconds)
 SESSION_TTL_SECONDS = 7200
 
-
 class ExtractionSessionStore:
     """
     Thread-safe, file-backed persistent extraction session store.

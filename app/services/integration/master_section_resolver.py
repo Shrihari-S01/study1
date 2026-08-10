@@ -37,7 +37,6 @@ MASTER_CATEGORY_MAPPING: Dict[Tuple[str, str], Tuple[int, int]] = {
     ("PEARL", "MOVABLE"): (13, 1),
 }
 
-
 class MasterSectionResolver:
     """
     Dynamic resolver for section_id and part_id driven by master metadata.

@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class CategoryParser:
     """
     Parses asset category, product type, and asset_type (Movable / Immovable).

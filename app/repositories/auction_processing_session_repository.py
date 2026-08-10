@@ -17,7 +17,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class AuctionProcessingSessionRepository:
     """
     Repository managing database interactions for AuctionProcessingSession.

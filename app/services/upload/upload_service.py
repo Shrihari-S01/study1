@@ -38,7 +38,6 @@ logger = get_logger(__name__)
 
 settings = get_settings()
 
-
 class UploadService:
     """
     Upload service.
@@ -52,10 +51,6 @@ class UploadService:
         self.repository = repository
 
         self.file_manager = FileManager()
-
-    # ==========================================================
-    # Upload File
-    # ==========================================================
 
     async def upload_file(
         self,
@@ -210,9 +205,6 @@ class UploadService:
 
         return upload
     
-    # ==========================================================
-    # Get Upload By ID
-    # ==========================================================
 
     async def get_upload(
         self,
@@ -247,10 +239,6 @@ class UploadService:
 
         return upload
 
-    # ==========================================================
-    # Get Upload By Upload Number
-    # ==========================================================
-
     async def get_upload_by_number(
         self,
         upload_number: str,
@@ -284,10 +272,6 @@ class UploadService:
 
         return upload
 
-    # ==========================================================
-    # Get All Uploads
-    # ==========================================================
-
     async def get_all_uploads(
         self,
         limit: int = 100,
@@ -315,10 +299,6 @@ class UploadService:
 
         return uploads
 
-    # ==========================================================
-    # Upload Exists
-    # ==========================================================
-
     async def exists(
         self,
         upload_id: str,
@@ -339,9 +319,6 @@ class UploadService:
             upload_id,
         )
     
-    # ==========================================================
-    # Update Upload Status
-    # ==========================================================
 
     async def update_status(
         self,
@@ -390,10 +367,6 @@ class UploadService:
         )
 
         return upload
-
-    # ==========================================================
-    # Update Processing Statistics
-    # ==========================================================
 
     async def update_statistics(
         self,
@@ -456,10 +429,6 @@ class UploadService:
 
         return upload
 
-    # ==========================================================
-    # Mark Upload Completed
-    # ==========================================================
-
     async def mark_completed(
         self,
         upload_id: str,
@@ -509,10 +478,6 @@ class UploadService:
 
         return upload
 
-    # ==========================================================
-    # Mark Upload Failed
-    # ==========================================================
-
     async def mark_failed(
         self,
         upload_id: str,
@@ -548,9 +513,6 @@ class UploadService:
 
         return upload
     
-    # ==========================================================
-    # Delete Upload
-    # ==========================================================
 
     async def delete_upload(
         self,
@@ -600,10 +562,6 @@ class UploadService:
             upload.upload_number,
         )
 
-    # ==========================================================
-    # Generate Upload Number
-    # ==========================================================
-
     def generate_upload_number(
         self,
     ) -> str:
@@ -612,10 +570,6 @@ class UploadService:
         """
 
         return f"UPL-{uuid4().hex[:8].upper()}"
-
-    # ==========================================================
-    # Validate Extension
-    # ==========================================================
 
     def validate_extension(
         self,
@@ -627,10 +581,6 @@ class UploadService:
 
         return extension.lower() in SUPPORTED_EXTENSIONS
 
-    # ==========================================================
-    # Validate File Size
-    # ==========================================================
-
     def validate_file_size(
         self,
         file_size: int,
@@ -640,10 +590,6 @@ class UploadService:
         """
 
         return file_size <= settings.max_upload_size
-
-    # ==========================================================
-    # Get Upload Status
-    # ==========================================================
 
     async def get_status(
         self,
@@ -659,10 +605,6 @@ class UploadService:
 
         return upload.status
 
-    # ==========================================================
-    # Count Uploads
-    # ==========================================================
-
     async def count_uploads(
         self,
     ) -> int:
@@ -671,10 +613,6 @@ class UploadService:
         """
 
         return await self.repository.count()
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     async def is_ready(
         self,

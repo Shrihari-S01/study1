@@ -14,7 +14,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PHPPayloadValidator:
     """
     Validates mapped & merged PHP Payload dictionary readiness prior to HTTP POST invocation.
@@ -126,13 +125,20 @@ class PHPPayloadValidator:
 
         if existing_price:
             sanitized_dict["reserver_price"] = existing_price
+            sanitized_dict["reserve_price"] = existing_price
             sanitized_dict["auction_start_price"] = existing_price
+            payload["reserver_price"] = existing_price
+            payload["reserve_price"] = existing_price
+            payload["auction_start_price"] = existing_price
         elif is_empty("reserver_price"):
             sanitized_dict["reserver_price"] = ""
+            sanitized_dict["reserve_price"] = ""
             sanitized_dict["auction_start_price"] = ""
 
         if is_empty("auction_date"):
             sanitized_dict["auction_date"] = ""
+
+        payload.update(sanitized_dict)
 
         is_valid = len(errors) == 0
 

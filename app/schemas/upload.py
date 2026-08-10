@@ -14,11 +14,6 @@ from pydantic import (
     Field,
 )
 
-
-# ==========================================================
-# Upload Base
-# ==========================================================
-
 class UploadBase(BaseModel):
     """
     Common upload fields.
@@ -69,22 +64,12 @@ class UploadBase(BaseModel):
 
     error_message: str = ""
 
-
-# ==========================================================
-# Upload Create
-# ==========================================================
-
 class UploadCreate(UploadBase):
     """
     Schema for creating upload.
     """
 
     upload_number: str
-
-
-# ==========================================================
-# Upload Update
-# ==========================================================
 
 class UploadUpdate(BaseModel):
     """
@@ -113,11 +98,6 @@ class UploadUpdate(BaseModel):
 
     error_message: str | None = None
 
-
-# ==========================================================
-# Upload Response
-# ==========================================================
-
 class UploadResponse(UploadBase):
     """
     Upload response.
@@ -134,11 +114,6 @@ class UploadResponse(UploadBase):
     created_at: datetime
 
     updated_at: datetime
-
-
-# ==========================================================
-# Upload Summary
-# ==========================================================
 
 class UploadSummary(BaseModel):
     """
@@ -165,11 +140,6 @@ class UploadSummary(BaseModel):
 
     created_at: datetime
 
-
-# ==========================================================
-# Upload List Response
-# ==========================================================
-
 class UploadListResponse(BaseModel):
     """
     Upload list response.
@@ -178,11 +148,6 @@ class UploadListResponse(BaseModel):
     total_records: int
 
     uploads: list[UploadResponse]
-
-
-# ==========================================================
-# Upload Processing Response
-# ==========================================================
 
 class UploadProcessResponse(BaseModel):
     """
@@ -204,11 +169,6 @@ class UploadProcessResponse(BaseModel):
     processing_time: float
 
     confidence_score: float
-
-
-# ==========================================================
-# Upload Delete Response
-# ==========================================================
 
 class UploadDeleteResponse(BaseModel):
     """

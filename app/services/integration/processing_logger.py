@@ -11,7 +11,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class IntegrationProcessingLogger:
     """
     Formatted stage logger outputting clear visual banners for all 8 pipeline stages.

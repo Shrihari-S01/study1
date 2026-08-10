@@ -13,7 +13,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PurePayloadMapper:
     """
     Structural key mapper translating normalized CommonAISchema fields into PHP payload field names.
@@ -67,10 +66,15 @@ class PurePayloadMapper:
         """
         Translate normalized CommonAISchema attributes into PHP payload keys.
         """
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
+        norm_schema = CanonicalAliasNormalizer.normalize_record_aliases(norm_schema)
+
         from app.services.integration.normalizer import DataNormalizer
         derived_loc = DataNormalizer.derive_product_location(norm_schema)
 
-        payload: Dict[str, Any] = {
+        payload: Dict[str, Any] = dict(norm_schema)
+
+        payload.update({
             # 1. Identifiers & Location
             "auction_id": str(norm_schema.get("raw_id") or ""),
             "auction_number": str(norm_schema.get("auction_number") or ""),
@@ -81,11 +85,14 @@ class PurePayloadMapper:
             "auction_department": str(norm_schema.get("auction_department") or ""),
 
             # 2. Pricing & Timelines
-            "reserver_price": str(norm_schema.get("reserve_price") or ""),
-            "auction_start_price": str(norm_schema.get("reserve_price") or ""),
-            "increment_price": str(norm_schema.get("increment_price") or ""),
-            "emd_price": str(norm_schema.get("emd_amount") or ""),
-            "emd_amount": str(norm_schema.get("emd_amount") or ""),
+            "reserver_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or ""),
+            "reserve_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or ""),
+            "auction_start_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or norm_schema.get("auction_start_price") or ""),
+            "increment_price": str(norm_schema.get("increment_price") or norm_schema.get("bid_increment") or ""),
+            "bid_increment": str(norm_schema.get("increment_price") or norm_schema.get("bid_increment") or ""),
+            "emd_price": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
+            "emd_amount": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
+            "pre_bid_emd": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
 
             "auction_date": str(norm_schema.get("auction_start_datetime") or ""),
             "auction_time": str(norm_schema.get("auction_time") or ""),
@@ -99,8 +106,8 @@ class PurePayloadMapper:
 
             # 3. Parties & Terms
             "borrower_name": self.extract_borrower_name(norm_schema),
-            "institution_seller": str(norm_schema.get("seller_name") or ""),
-            "vendor_name": str(norm_schema.get("seller_name") or norm_schema.get("vendor_name") or ""),
+            "institution_seller": str(norm_schema.get("seller_name") or norm_schema.get("institution_seller") or ""),
+            "vendor_name": str(norm_schema.get("seller_name") or norm_schema.get("vendor_name") or norm_schema.get("institution_seller") or ""),
             "event_type": str(norm_schema.get("auction_type") or ""),
             "first_bid_acceptance_condition": str(norm_schema.get("first_bid_acceptance_condition") or ""),
             "digital_certificate": str(norm_schema.get("digital_certificate") or ""),
@@ -139,9 +146,13 @@ class PurePayloadMapper:
             "emd_bank_name": str(norm_schema.get("emd_bank_name") or ""),
             "emd_account_no": str(norm_schema.get("emd_account_no") or ""),
             "emd_ifsc": str(norm_schema.get("emd_ifsc") or ""),
-            "authorized_officer_no": str(norm_schema.get("authorized_officer_number") or ""),
+            "authorized_officer_no": str(norm_schema.get("authorized_officer_number") or norm_schema.get("authorized_officer_no") or ""),
             "authorized_officer_name": str(norm_schema.get("authorized_officer_name") or ""),
-        }
+        })
+
+        logger.debug("[%d] Pure Payload Mapper: Translated CommonAISchema fields to PHP payload keys.", lot_index)
+        return payload
+
 
         logger.debug("[%d] Pure Payload Mapper: Translated CommonAISchema fields to PHP payload keys.", lot_index)
         return payload

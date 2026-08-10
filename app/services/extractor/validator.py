@@ -13,7 +13,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class Validator:
     """
     Validate extracted auction fields.
@@ -26,10 +25,6 @@ class Validator:
         logger.info(
             "Validator Initialized."
         )
-
-    # ==========================================================
-    # Parse Financial Value Helper
-    # ==========================================================
 
     def parse_financial_value(
         self,
@@ -91,10 +86,6 @@ class Validator:
         digits = re.sub(r'[^0-9.]', '', cleaned_no_comma)
         return digits
 
-    # ==========================================================
-    # Validate Complete Record
-    # ==========================================================
-
     def validate(
         self,
         data: dict,
@@ -155,7 +146,6 @@ class Validator:
         clean_inc = self.validate_bid_increment(val_inc)
         validated["increment_price"] = clean_inc
         validated["bid_increment"] = clean_inc
-
 
         validated["loan_account_number"] = self.validate_loan_account(
             validated.get("loan_account_number", "")
@@ -230,10 +220,6 @@ class Validator:
         return validated
     
 
-    # ==========================================================
-    # Clean Text
-    # ==========================================================
-
     def clean(
         self,
         value: str,
@@ -257,10 +243,6 @@ class Validator:
         return value 
     
 
-    # ==========================================================
-    # Empty Value
-    # ==========================================================
-
     def is_empty(
         self,
         value,
@@ -283,10 +265,6 @@ class Validator:
         return False
     
 
-    # ==========================================================
-    # Health Check
-    # ==========================================================
-
     def is_ready(
         self,
     ) -> bool:
@@ -296,10 +274,6 @@ class Validator:
 
         return True
     
-
-    # ==========================================================
-    # Validate Bank Name
-    # ==========================================================
 
     def validate_bank_name(
         self,
@@ -365,11 +339,6 @@ class Validator:
 
         return value.title()
 
-
-    # ==========================================================
-    # Validate Branch Name
-    # ==========================================================
-
     def validate_branch_name(
         self,
         value: str,
@@ -399,11 +368,6 @@ class Validator:
         )
 
         return value.title()
-
-
-    # ==========================================================
-    # Validate Person Name
-    # ==========================================================
 
     def validate_person_name(
         self,
@@ -445,11 +409,6 @@ class Validator:
         )
 
         return value.title()
-
-
-    # ==========================================================
-    # Validate Property Type
-    # ==========================================================
 
     def validate_property_type(
         self,
@@ -514,10 +473,6 @@ class Validator:
         return value.title()
     
 
-    # ==========================================================
-    # Validate Asset Type
-    # ==========================================================
-
     def validate_asset_type(
         self,
         value: str,
@@ -548,11 +503,6 @@ class Validator:
 
         return value.title()
 
-
-    # ==========================================================
-    # Validate Possession Type
-    # ==========================================================
-
     def validate_possession_type(
         self,
         value: str,
@@ -588,10 +538,6 @@ class Validator:
         return value.title()
     
 
-    # ==========================================================
-    # Validate Possession Type
-    # ==========================================================
-
     def validate_possession_type(
         self,
         value: str,
@@ -625,11 +571,6 @@ class Validator:
             return "Constructive Possession"
 
         return value.title()
-
-
-    # ==========================================================
-    # Validate Reserve Price
-    # ==========================================================
 
     def validate_reserve_price(
         self,
@@ -641,10 +582,6 @@ class Validator:
         return self.parse_financial_value(value)
     
 
-    # ==========================================================
-    # Validate EMD
-    # ==========================================================
-
     def validate_emd(
         self,
         value: str,
@@ -654,10 +591,6 @@ class Validator:
         """
         return self.parse_financial_value(value)
     
-
-    # ==========================================================
-    # Validate Bid Increment
-    # ==========================================================
 
     def validate_bid_increment(
         self,
@@ -669,17 +602,15 @@ class Validator:
         return self.parse_financial_value(value)
     
 
-    # ==========================================================
-    # Validate Loan Account Number
-    # ==========================================================
-
     def validate_loan_account(
         self,
         value: str,
     ) -> str:
         """
         Validate loan account number.
+        Enforces strict semantic separation: never returns phone numbers, officer numbers, or IFSCs.
         """
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
 
         value = self.clean(
             value,
@@ -690,24 +621,10 @@ class Validator:
         ):
             return ""
 
-        value = value.upper()
+        clean_val = CanonicalAliasNormalizer.normalize_loan_account_number(value)
+        return clean_val
 
-        value = re.sub(
-
-            r"[^A-Z0-9/-]",
-
-            "",
-
-            value,
-
-        )
-
-        return value
     
-
-    # ==========================================================
-    # Validate Contact Number
-    # ==========================================================
 
     def validate_contact_number(
         self,
@@ -738,10 +655,6 @@ class Validator:
         return value
     
 
-    # ==========================================================
-    # Validate Email
-    # ==========================================================
-
     def validate_email(
         self,
         value: str,
@@ -759,10 +672,6 @@ class Validator:
 
         return value
     
-
-    # ==========================================================
-    # Validate IFSC
-    # ==========================================================
 
     def validate_ifsc(
         self,
@@ -803,10 +712,6 @@ class Validator:
         return value
     
 
-    # ==========================================================
-    # Validate PIN Code
-    # ==========================================================
-
     def validate_pin_code(
         self,
         value: str,
@@ -825,10 +730,6 @@ class Validator:
         return value
     
 
-    # ==========================================================
-    # Validate Auction Date
-    # ==========================================================
-
     def validate_auction_date(
         self,
         value: str,
@@ -841,9 +742,6 @@ class Validator:
             value,
         )
     
-    # ==========================================================
-    # Validate Inspection Date
-    # ==========================================================
 
     def validate_inspection_date(
         self,
@@ -857,10 +755,6 @@ class Validator:
             value,
         )
 
-    # ==========================================================
-    # Validate Demand Notice Date
-    # ==========================================================
-
     def validate_demand_notice_date(
         self,
         value: str,
@@ -873,9 +767,6 @@ class Validator:
             value,
         )
     
-    # ==========================================================
-    # Validate Sale Notice Date
-    # ==========================================================
 
     def validate_sale_notice_date(
         self,
@@ -888,10 +779,6 @@ class Validator:
         return self.validate_date(
             value,
         )
-
-    # ==========================================================
-    # Validate Date
-    # ==========================================================
 
     def validate_date(
         self,
@@ -936,10 +823,6 @@ class Validator:
         return value
     
 
-    # ==========================================================
-    # Validate Property Address
-    # ==========================================================
-
     def validate_property_address(
         self,
         value: str,
@@ -957,10 +840,6 @@ class Validator:
 
         return value
     
-
-    # ==========================================================
-    # Validate District
-    # ==========================================================
 
     def validate_district(
         self,
@@ -982,9 +861,6 @@ class Validator:
 
         return value.title()
     
-    # ==========================================================
-    # Validate State
-    # ==========================================================
 
     def validate_state(
         self,
@@ -1007,10 +883,6 @@ class Validator:
         return value.title()
     
 
-    # ==========================================================
-    # Validate Village
-    # ==========================================================
-
     def validate_village(
         self,
         value: str,
@@ -1030,11 +902,6 @@ class Validator:
             return ""
 
         return value.title()
-
-
-    # ==========================================================
-    # Validate Survey Number
-    # ==========================================================
 
     def validate_survey_number(
         self,
@@ -1069,10 +936,6 @@ class Validator:
         return value
     
 
-    # ==========================================================
-    # Validate Door Number
-    # ==========================================================
-
     def validate_door_number(
         self,
         value: str,
@@ -1093,10 +956,6 @@ class Validator:
 
         return value.upper()
     
-
-    # ==========================================================
-    # Required Fields
-    # ==========================================================
 
     def required_fields(
         self,
@@ -1119,10 +978,6 @@ class Validator:
 
         ]
     
-
-    # ==========================================================
-    # Missing Fields
-    # ==========================================================
 
     def missing_fields(
         self,
@@ -1152,10 +1007,6 @@ class Validator:
         return missing
     
 
-    # ==========================================================
-    # Validation Errors
-    # ==========================================================
-
     def validation_errors(
         self,
         data: dict,
@@ -1177,11 +1028,6 @@ class Validator:
             )
 
         return errors
-
-
-    # ==========================================================
-    # Quality Score
-    # ==========================================================
 
     def quality_score(
         self,
@@ -1213,11 +1059,6 @@ class Validator:
 
         )
 
-
-    # ==========================================================
-    # Validation Summary
-    # ==========================================================
-
     def summary(
         self,
         data: dict,
@@ -1246,9 +1087,6 @@ class Validator:
 
         }
     
-    # ==========================================================
-    # Process Validation
-    # ==========================================================
 
     def process(
         self,
@@ -1277,11 +1115,6 @@ class Validator:
             "validation": summary,
 
         }
-
-
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -1323,11 +1156,6 @@ class Validator:
 
         }
 
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
-
     def health_check(
         self,
     ) -> dict:
@@ -1345,11 +1173,6 @@ class Validator:
 
         }
 
-
-    # ==========================================================
-    # Reset
-    # ==========================================================
-
     def reset(
         self,
     ) -> bool:
@@ -1363,10 +1186,6 @@ class Validator:
 
         return True
     
-
-    # ==========================================================
-    # Version
-    # ==========================================================
 
     def version(
         self,

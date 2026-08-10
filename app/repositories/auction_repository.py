@@ -14,7 +14,6 @@ from app.models.auction import Auction
 
 logger = get_logger(__name__)
 
-
 class AuctionRepository:
     """
     Repository for Auction table.
@@ -26,10 +25,6 @@ class AuctionRepository:
     ) -> None:
 
         self.db = db
-
-    # ==========================================================
-    # Create Auction
-    # ==========================================================
 
     async def create(
         self,
@@ -51,10 +46,6 @@ class AuctionRepository:
         )
 
         return auction
-
-    # ==========================================================
-    # Bulk Create
-    # ==========================================================
 
     async def bulk_create(
         self,
@@ -79,10 +70,6 @@ class AuctionRepository:
 
         return auctions
 
-    # ==========================================================
-    # Get Auction By ID
-    # ==========================================================
-
     async def get_by_id(
         self,
         auction_id: str,
@@ -100,10 +87,6 @@ class AuctionRepository:
         )
 
         return result.scalar_one_or_none()
-
-    # ==========================================================
-    # Get Auctions By Upload
-    # ==========================================================
 
     async def get_by_upload_id(
         self,
@@ -129,10 +112,6 @@ class AuctionRepository:
 
         return list(result.scalars().all())
 
-    # ==========================================================
-    # Get All Auctions
-    # ==========================================================
-
     async def get_all(
         self,
         limit: int = 100,
@@ -155,10 +134,6 @@ class AuctionRepository:
 
         return list(result.scalars().all())
 
-    # ==========================================================
-    # Update Auction
-    # ==========================================================
-
     async def update(
         self,
         auction: Auction,
@@ -178,10 +153,6 @@ class AuctionRepository:
 
         return auction
 
-    # ==========================================================
-    # Delete Auction
-    # ==========================================================
-
     async def delete(
         self,
         auction: Auction,
@@ -198,10 +169,6 @@ class AuctionRepository:
             "Auction deleted: %s",
             auction.id,
         )
-
-    # ==========================================================
-    # Delete Upload Auctions
-    # ==========================================================
 
     async def delete_by_upload_id(
         self,
@@ -227,10 +194,6 @@ class AuctionRepository:
             upload_id,
         )
 
-    # ==========================================================
-    # Search Borrower
-    # ==========================================================
-
     async def search_borrower(
         self,
         borrower: str,
@@ -252,10 +215,6 @@ class AuctionRepository:
         )
 
         return list(result.scalars().all())
-
-    # ==========================================================
-    # Search Bank
-    # ==========================================================
 
     async def search_bank(
         self,
@@ -279,10 +238,6 @@ class AuctionRepository:
 
         return list(result.scalars().all())
 
-    # ==========================================================
-    # Count Auctions
-    # ==========================================================
-
     async def count(
         self,
     ) -> int:
@@ -296,10 +251,6 @@ class AuctionRepository:
         )
 
         return result.scalar_one() or 0
-
-    # ==========================================================
-    # Exists
-    # ==========================================================
 
     async def exists(
         self,

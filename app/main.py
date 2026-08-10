@@ -28,11 +28,6 @@ from app.models.upload import Upload
 settings = get_settings()
 logger = get_logger(__name__)
 
-
-# ==========================================================
-# Application Lifespan
-# ==========================================================
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -88,11 +83,6 @@ async def lifespan(app: FastAPI):
 
     logger.info("Stopping Auction AI Application...")
 
-
-# ==========================================================
-# FastAPI Application
-# ==========================================================
-
 app = FastAPI(
 
     title="Auction AI API",
@@ -123,11 +113,6 @@ Features:
 
 )
 
-
-# ==========================================================
-# CORS
-# ==========================================================
-
 app.add_middleware(
 
     CORSMiddleware,
@@ -142,11 +127,6 @@ app.add_middleware(
 
 )
 
-
-# ==========================================================
-# Include API Routes
-# ==========================================================
-
 app.include_router(
 
     api_router,
@@ -154,11 +134,6 @@ app.include_router(
     prefix="/api/v1",
 
 )
-
-
-# ==========================================================
-# Root Endpoint
-# ==========================================================
 
 @app.get(
     "/",
@@ -181,11 +156,6 @@ async def root():
         status_code=404
     )
 
-
-# ==========================================================
-# Ping Endpoint
-# ==========================================================
-
 @app.get(
     "/ping",
     tags=["Health"],
@@ -200,11 +170,6 @@ async def ping():
         "message": "pong",
 
     }
-
-
-# ==========================================================
-# Global Exception Handler
-# ==========================================================
 
 @app.exception_handler(Exception)
 async def global_exception_handler(
@@ -235,11 +200,6 @@ async def global_exception_handler(
 
     )
 
-
-# ==========================================================
-# Startup Information
-# ==========================================================
-
 @app.get(
     "/info",
     tags=["Application"],
@@ -260,11 +220,6 @@ async def application_info():
         "debug": settings.debug,
 
     }
-
-
-# ==========================================================
-# Run Application
-# ==========================================================
 
 if __name__ == "__main__":
 

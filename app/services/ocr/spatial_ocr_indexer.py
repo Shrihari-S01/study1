@@ -16,7 +16,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 @dataclass
 class OCRWordBox:
     box: List[List[float]]
@@ -26,7 +25,6 @@ class OCRWordBox:
     y: float
     w: float
     h: float
-
 
 class SpatialOCRIndex:
     """
@@ -106,7 +104,6 @@ class SpatialOCRIndex:
 
         matching_words.sort(key=lambda item: (round(item.y / 20.0) * 20.0, item.x))
         return "\n".join(w.text for w in matching_words)
-
 
 class SpatialOCRIndexCache:
     """

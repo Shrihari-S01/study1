@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class LotParser:
     """
     Dynamically segments lot blocks across any number of lots (1 to 250+) and extracts lot fields.

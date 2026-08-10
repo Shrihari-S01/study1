@@ -15,7 +15,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class LayoutDetector:
     """
     Detect newspaper layout blocks.
@@ -34,10 +33,6 @@ class LayoutDetector:
         self.minimum_height = 80
 
         self.minimum_area = 12000
-
-    # ==========================================================
-    # Read Image
-    # ==========================================================
 
     def load_image(
         self,
@@ -59,10 +54,6 @@ class LayoutDetector:
 
         return image
 
-    # ==========================================================
-    # Convert to Gray
-    # ==========================================================
-
     def gray(
         self,
         image: np.ndarray,
@@ -78,10 +69,6 @@ class LayoutDetector:
             cv2.COLOR_BGR2GRAY,
 
         )
-
-    # ==========================================================
-    # Binary Threshold
-    # ==========================================================
 
     def threshold(
         self,
@@ -105,9 +92,6 @@ class LayoutDetector:
 
         )[1]
     
-# ==========================================================
-    # Detect Layout
-    # ==========================================================
 
     def detect(
         self,
@@ -185,9 +169,6 @@ class LayoutDetector:
 
         return regions
     
-    # ==========================================================
-    # Merge Text Regions
-    # ==========================================================
 
     def close_regions(
         self,
@@ -217,9 +198,6 @@ class LayoutDetector:
 
         )
     
-    # ==========================================================
-    # Find Contours
-    # ==========================================================
 
     def find_contours(
         self,
@@ -241,9 +219,6 @@ class LayoutDetector:
 
         return contours
     
-    # ==========================================================
-    # Extract Regions
-    # ==========================================================
 
     def extract_regions(
         self,
@@ -311,10 +286,6 @@ class LayoutDetector:
         return regions
     
 
-    # ==========================================================
-    # Calculate Region Area
-    # ==========================================================
-
     def area(
         self,
         region: dict,
@@ -332,10 +303,6 @@ class LayoutDetector:
             region["height"]
 
         )
-
-    # ==========================================================
-    # Filter Large Regions
-    # ==========================================================
 
     def filter_regions(
         self,
@@ -368,10 +335,6 @@ class LayoutDetector:
         return filtered
     
 
-    # ==========================================================
-    # Region Center
-    # ==========================================================
-
     def center(
         self,
         region: dict,
@@ -387,11 +350,6 @@ class LayoutDetector:
             region["y"] + region["height"] // 2,
 
         )
-
-
-    # ==========================================================
-    # Merge Overlapping Regions
-    # ==========================================================
 
     def merge_regions(
         self,
@@ -476,9 +434,6 @@ class LayoutDetector:
 
         return merged
     
-    # ==========================================================
-    # Check Overlap
-    # ==========================================================
 
     def is_overlapping(
         self,
@@ -556,11 +511,6 @@ class LayoutDetector:
 
         return ratio >= threshold
 
-
-    # ==========================================================
-    # Combine Regions
-    # ==========================================================
-
     def combine_regions(
         self,
         region1: dict,
@@ -624,11 +574,6 @@ class LayoutDetector:
 
         }
 
-
-    # ==========================================================
-    # Sort Regions
-    # ==========================================================
-
     def sort_regions(
         self,
         regions: list[dict],
@@ -651,9 +596,6 @@ class LayoutDetector:
 
         )
     
-        # ==========================================================
-    # Save Layout Regions
-    # ==========================================================
 
     def save_regions(
         self,
@@ -710,10 +652,6 @@ class LayoutDetector:
         return saved_files
     
 
-    # ==========================================================
-    # Draw Layout
-    # ==========================================================
-
     def draw_regions(
         self,
         image_path: Path,
@@ -755,10 +693,6 @@ class LayoutDetector:
 
         return output_path
     
-
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -808,9 +742,6 @@ class LayoutDetector:
 
         }
     
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def is_ready(
         self,

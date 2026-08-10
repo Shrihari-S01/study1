@@ -40,7 +40,6 @@ logger = get_logger(__name__)
 
 settings = get_settings()
 
-
 class PaddleOCRService:
     """
     PaddleOCR wrapper.
@@ -83,24 +82,19 @@ class PaddleOCRService:
                 with suppress_c_stderr():
                     PaddleOCRService._ocr = PaddleOCR(
                         lang="en",
-                        use_angle_cls=True,
+                        use_angle_cls=False,
                         use_gpu=False,
                     )
                     import numpy as np
                     dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
                     # Dry run local OCR to check for native C++ dynamic operator crashes
-                    PaddleOCRService._ocr.ocr(dummy_img, cls=True)
+                    PaddleOCRService._ocr.ocr(dummy_img, cls=False)
                 logger.info("PaddleOCR Loaded and checked successfully.")
             except Exception as exc:
                 logger.warning("PaddleOCR check failed: Disabling local PaddleOCR (routing to Gemini OCR directly).")
                 PaddleOCRService._ocr = None
 
         self.ocr = PaddleOCRService._ocr
-
-
-    # ==========================================================
-    # OCR Ready
-    # ==========================================================
 
     def is_ready(
         self,
@@ -111,10 +105,6 @@ class PaddleOCRService:
 
         return self.ocr is not None
     
-
-    # ==========================================================
-    # Validate Image
-    # ==========================================================
 
     def validate(
         self,
@@ -142,9 +132,6 @@ class PaddleOCRService:
 
             )
         
-    # ==========================================================
-    # OCR Version
-    # ==========================================================
 
     def version(
         self,
@@ -264,10 +251,6 @@ class PaddleOCRService:
             ]
         ]
 
-    # ==========================================================
-    # OCR Extraction
-    # ==========================================================
-
     def extract(
         self,
         image_path: Path,
@@ -300,7 +283,7 @@ class PaddleOCRService:
             return res
 
         try:
-            result = self.ocr.ocr(str(image_path), cls=True)
+            result = self.ocr.ocr(str(image_path), cls=False)
             SpatialOCRIndexCache.put(image_path, result)
             return result
         except Exception as exc:
@@ -333,10 +316,6 @@ class PaddleOCRService:
 
         return result
     
-
-    # ==========================================================
-    # OCR With Confidence
-    # ==========================================================
 
     def extract_with_confidence(
         self,
@@ -411,10 +390,6 @@ class PaddleOCRService:
         return result, average
     
 
-    # ==========================================================
-    # Has Text
-    # ==========================================================
-
     def has_text(
         self,
         image_path: Path,
@@ -429,10 +404,6 @@ class PaddleOCRService:
 
         return len(result) > 0
     
-
-    # ==========================================================
-    # Total OCR Lines
-    # ==========================================================
 
     def line_count(
         self,
@@ -452,10 +423,6 @@ class PaddleOCRService:
 
         return total
     
-
-    # ==========================================================
-    # Parse OCR Result
-    # ==========================================================
 
     def parse_result(
         self,
@@ -556,10 +523,6 @@ class PaddleOCRService:
         return parsed
     
 
-    # ==========================================================
-    # Bounding Boxes
-    # ==========================================================
-
     def bounding_boxes(
         self,
         result: list,
@@ -579,11 +542,6 @@ class PaddleOCRService:
             for line in parsed
 
         ]
-
-
-    # ==========================================================
-    # Confidence Scores
-    # ==========================================================
 
     def confidence_scores(
         self,
@@ -605,11 +563,6 @@ class PaddleOCRService:
 
         ]
 
-
-    # ==========================================================
-    # OCR Text Objects
-    # ==========================================================
-
     def text_objects(
         self,
         result: list,
@@ -629,11 +582,6 @@ class PaddleOCRService:
             for line in parsed
 
         ]
-
-
-    # ==========================================================
-    # OCR Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -703,9 +651,6 @@ class PaddleOCRService:
 
         }
     
-    # ==========================================================
-    # Extract Plain Text
-    # ==========================================================
 
     def extract_text(
         self,
@@ -762,9 +707,6 @@ class PaddleOCRService:
 
         )
     
-    # ==========================================================
-    # Filter Low Confidence
-    # ==========================================================
 
     def filter_low_confidence(
         self,
@@ -878,9 +820,6 @@ class PaddleOCRService:
         total_max_x = max(l["x2"] for l in lines)
         return recursive_crossings_sort(lines, total_min_x, total_max_x)
     
-    # ==========================================================
-    # Merge OCR Lines
-    # ==========================================================
 
     def merge_lines(
         self,
@@ -970,10 +909,6 @@ class PaddleOCRService:
         return merged
     
 
-    # ==========================================================
-    # Average Confidence
-    # ==========================================================
-
     def average_confidence(
         self,
         lines: list[dict],
@@ -1003,10 +938,6 @@ class PaddleOCRService:
         )
     
 
-    # ==========================================================
-    # Batch OCR
-    # ==========================================================
-
     def extract_batch(
         self,
         image_paths: list[Path],
@@ -1064,10 +995,6 @@ class PaddleOCRService:
         return results
     
 
-    # ==========================================================
-    # Batch OCR
-    # ==========================================================
-
     def extract_batch(
         self,
         image_paths: list[Path],
@@ -1124,10 +1051,6 @@ class PaddleOCRService:
 
         return results
     
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def health_check(
         self,
@@ -1148,11 +1071,6 @@ class PaddleOCRService:
 
         }
 
-
-    # ==========================================================
-    # Close OCR
-    # ==========================================================
-
     def close(
         self,
     ) -> None:
@@ -1166,11 +1084,6 @@ class PaddleOCRService:
         logger.info(
             "PaddleOCR Service Closed."
         )
-
-
-    # ==========================================================
-    # OCR Pipeline
-    # ==========================================================
 
     def process(
         self,
@@ -1209,7 +1122,6 @@ class PaddleOCRService:
             "statistics": statistics,
 
         }
-
 
 if __name__ == "__main__":
     print("=" * 60)

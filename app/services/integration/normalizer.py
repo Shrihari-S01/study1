@@ -14,7 +14,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class DataNormalizer:
     """
     Normalizes text, dates, monetary strings, and enums prior to key payload mapping.
@@ -369,8 +368,11 @@ class DataNormalizer:
     def normalize_schema(schema: Dict[str, Any], lot_index: int = 1) -> Dict[str, Any]:
         """
         Produce a normalized clean copy of CommonAISchema.
+        Preserves non-empty values and prevents writing 'null' string defaults.
         """
-        norm: Dict[str, Any] = dict(schema)
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
+        norm_schema_data = CanonicalAliasNormalizer.normalize_record_aliases(schema)
+        norm: Dict[str, Any] = dict(norm_schema_data)
 
         from app.services.integration.payload_sanitizer import sanitize_string_field
 
@@ -384,8 +386,14 @@ class DataNormalizer:
 
         # 2. Helper: Clean Monetary Strings
         def clean_money(val: Any, default: str = "") -> str:
+            if val is None:
+                return default
+            if isinstance(val, (int, float)):
+                if val == 0:
+                    return default
+                return f"{int(val)}" if float(val).is_integer() else f"{val:.2f}"
             raw = clean_str(val)
-            if not raw:
+            if not raw or raw in {"0", "0.0", "0.00"}:
                 return default
             # Strip currency prefixes (Rs., RS., INR, Rupees, ₹) and trailing '/-'
             s = re.sub(r"(?i)\b(rs|inr|rupees)\b\.?\s*", "", raw)
@@ -398,6 +406,8 @@ class DataNormalizer:
             if clean:
                 try:
                     flt = float(clean)
+                    if flt == 0:
+                        return default
                     return f"{int(flt)}" if flt.is_integer() else f"{flt:.2f}"
                 except ValueError:
                     pass
@@ -441,15 +451,25 @@ class DataNormalizer:
         norm["submit_application"] = clean_datetime(norm.get("submit_application"))
         norm["catalogue_view_date"] = clean_datetime(norm.get("catalogue_view_date"))
 
-        norm["reserve_price"] = clean_money(norm.get("reserve_price"))
-        norm["increment_price"] = clean_money(norm.get("increment_price"))
-        norm["emd_amount"] = clean_money(norm.get("emd_amount"))
+        rp_clean = clean_money(norm.get("reserve_price") or norm.get("reserver_price"))
+        norm["reserve_price"] = rp_clean
+        norm["reserver_price"] = rp_clean
+
+        inc_clean = clean_money(norm.get("increment_price") or norm.get("bid_increment"))
+        norm["increment_price"] = inc_clean
+        norm["bid_increment"] = inc_clean
+
+        emd_clean = clean_money(norm.get("emd_amount") or norm.get("emd_price") or norm.get("pre_bid_emd"))
+        norm["emd_amount"] = emd_clean
+        norm["emd_price"] = emd_clean
+        norm["pre_bid_emd"] = emd_clean
+
         norm["full_payment_balance"] = clean_money(norm.get("full_payment_balance"))
         norm["start_floor_price"] = clean_money(norm.get("start_floor_price"))
 
         raw_b = clean_str(norm.get("borrower_name") or norm.get("borrower") or norm.get("borrower_details") or "")
         clean_b, b_addr = DataNormalizer.separate_borrower_name_and_address(raw_b)
-        norm["borrower_name"] = clean_b if clean_b else DataNormalizer.restore_legal_abbreviations(clean_str(norm.get("borrower_name"), default="null"))
+        norm["borrower_name"] = clean_b if clean_b else DataNormalizer.restore_legal_abbreviations(clean_str(norm.get("borrower_name"), default=""))
 
         if b_addr:
             current_addr = clean_str(norm.get("property_address") or norm.get("asset_location") or "")
@@ -468,11 +488,12 @@ class DataNormalizer:
         norm["first_bid_acceptance_condition"] = clean_str(norm.get("first_bid_acceptance_condition"), default="YES")
         norm["currency"] = clean_str(norm.get("currency"), default="INR")
 
-        norm["emd_bank_name"] = clean_str(norm.get("emd_bank_name"), default="null")
-        norm["emd_account_no"] = clean_str(norm.get("emd_account_no"))
-        norm["emd_ifsc"] = clean_str(norm.get("emd_ifsc"), default="null")
-        norm["authorized_officer_name"] = clean_str(norm.get("authorized_officer_name"), default="null")
-        norm["authorized_officer_number"] = clean_str(norm.get("authorized_officer_number"), default="null")
+        norm["emd_bank_name"] = clean_str(norm.get("emd_bank_name"), default="")
+        norm["emd_account_no"] = clean_str(norm.get("emd_account_no"), default="")
+        norm["emd_ifsc"] = clean_str(norm.get("emd_ifsc"), default="")
+        norm["authorized_officer_name"] = clean_str(norm.get("authorized_officer_name"), default="")
+        norm["authorized_officer_number"] = clean_str(norm.get("authorized_officer_number"), default="")
 
         logger.debug("[%d] Normalized Common AI Schema values successfully", lot_index)
         return norm
+

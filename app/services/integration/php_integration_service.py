@@ -15,7 +15,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PHPIntegrationService:
     """
     Handles network communication, HTTP request dispatching, timeouts, retries,

@@ -16,10 +16,6 @@ from pydantic_settings import (
     SettingsConfigDict,
 )
 
-# ==========================================================
-# Project Directories
-# ==========================================================
-
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 APP_DIR = BASE_DIR / "app"
@@ -31,10 +27,6 @@ LOG_DIR = BASE_DIR / "logs"
 MODEL_DIR = BASE_DIR / "models"
 
 TEMP_DIR = BASE_DIR / "temp"
-
-# ==========================================================
-# Settings
-# ==========================================================
 
 class Settings(BaseSettings):
     """
@@ -52,10 +44,6 @@ class Settings(BaseSettings):
         extra="ignore",
 
     )
-
-    # ======================================================
-    # Application
-    # ======================================================
 
     app_name: str = "Auction AI"
 
@@ -81,10 +69,6 @@ class Settings(BaseSettings):
 
     )
 
-    # ======================================================
-    # Server
-    # ======================================================
-
     host: str = "0.0.0.0"
 
     port: int = 8000
@@ -92,10 +76,6 @@ class Settings(BaseSettings):
     workers: int = 1
 
     timeout: int = 120
-
-    # ======================================================
-    # PHP Integration Engine Settings
-    # ======================================================
 
     php_insert_api_url: str = Field(
         default="",
@@ -113,11 +93,6 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 50
 
-
-    # ======================================================
-    # Logging
-    # ======================================================
-
     log_level: str = "INFO"
 
     log_format: str = (
@@ -128,21 +103,11 @@ class Settings(BaseSettings):
 
     log_file: str = "auction_ai.log"
 
-
-    # ======================================================
-    # API
-    # ======================================================
-
     docs_url: str = "/docs"
 
     redoc_url: str = "/redoc"
 
     openapi_url: str = "/openapi.json"
-
-
-    # ======================================================
-    # Database
-    # ======================================================
 
     mysql_host: str = Field(
         default="localhost",
@@ -170,11 +135,6 @@ class Settings(BaseSettings):
 
     database_pool_timeout: int = 30
 
-
-    # ======================================================
-    # Gemini AI
-    # ======================================================
-
     gemini_api_key: str = Field(
         default="",
     )
@@ -183,10 +143,6 @@ class Settings(BaseSettings):
         "gemini-flash-latest"
     )
 
-    # ======================================================
-    # OpenAI AI
-    # ======================================================
-
     openai_api_key: str = Field(
         default="",
     )
@@ -194,10 +150,6 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
 
     llm_provider: str = "openai"
-
-    # ======================================================
-    # Paddle OCR
-    # ======================================================
 
     paddle_language: str = "en"
 
@@ -210,10 +162,6 @@ class Settings(BaseSettings):
     
 
     ocr_confidence_threshold: float = 0.50
-
-    # ======================================================
-    # Upload
-    # ======================================================
 
     max_upload_size_mb: int = 50
 
@@ -239,11 +187,6 @@ class Settings(BaseSettings):
 
     overwrite_existing: bool = False
 
-
-    # ======================================================
-    # Image Processing
-    # ======================================================
-
     max_image_width: int = 3000
 
     max_image_height: int = 3000
@@ -257,10 +200,6 @@ class Settings(BaseSettings):
     denoise_enabled: bool = True
 
     enhance_enabled: bool = True
-
-    # ======================================================
-    # Pipeline
-    # ======================================================
 
     enable_layout_detection: bool = True
 
@@ -276,41 +215,25 @@ class Settings(BaseSettings):
 
     enable_confidence: bool = True
 
-
-    # ======================================================
-    # Confidence
-    # ======================================================
-
     minimum_confidence: float = 0.75
 
     regex_weight: float = 0.70
 
     llm_weight: float = 0.30
 
+    delete_temp_files: bool = True
 
-    # ======================================================
-    # Temporary Files
-    # ======================================================
+    cleanup_after_processing: bool = True
 
-    delete_temp_files: bool = False
+    keep_split_images: bool = False
 
-    cleanup_after_processing: bool = False
-
-
-    # ======================================================
-    # Processing
-    # ======================================================
+    enable_disk_cache: bool = False
 
     batch_size: int = 10
 
     max_auction_notices: int = 100
 
     processing_timeout: int = 600
-
-
-    # ======================================================
-    # Directories
-    # ======================================================
 
     base_dir: Path = BASE_DIR
 
@@ -329,10 +252,6 @@ class Settings(BaseSettings):
     log_dir: Path = LOG_DIR
 
     model_dir: Path = MODEL_DIR
-
-    # ======================================================
-    # CORS
-    # ======================================================
 
     cors_origins: list[str] = [
 
@@ -353,11 +272,6 @@ class Settings(BaseSettings):
     ]
 
     cors_credentials: bool = True
-
-
-    # ======================================================
-    # Database URL
-    # ======================================================
 
     @property
     def database_url(
@@ -407,9 +321,6 @@ class Settings(BaseSettings):
 
         )
     
-    # ======================================================
-    # Directory Creation
-    # ======================================================
 
     def create_directories(
         self,
@@ -446,11 +357,6 @@ class Settings(BaseSettings):
 
             )
 
-
-    # ======================================================
-    # Settings Information
-    # ======================================================
-
     def info(
         self,
     ) -> dict:
@@ -478,9 +384,6 @@ class Settings(BaseSettings):
 
         }
     
-    # ======================================================
-    # Health Check
-    # ======================================================
 
     def health_check(
         self,
@@ -511,9 +414,6 @@ class Settings(BaseSettings):
 
         }
     
-# ==========================================================
-# Settings Singleton
-# ==========================================================
 
 @lru_cache
 def get_settings() -> Settings:
@@ -526,10 +426,5 @@ def get_settings() -> Settings:
     settings.create_directories()
 
     return settings
-
-
-# ==========================================================
-# Global Settings
-# ==========================================================
 
 settings = get_settings()

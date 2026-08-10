@@ -34,7 +34,6 @@ from app.database.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.upload import Upload
 
-
 class Auction(
     Base,
     TimestampMixin,
@@ -45,19 +44,11 @@ class Auction(
 
     __tablename__ = "auctions"
 
-    # ==========================================================
-    # Primary Key
-    # ==========================================================
-
     id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid4()),
     )
-
-    # ==========================================================
-    # Upload Relationship
-    # ==========================================================
 
     upload_id: Mapped[str] = mapped_column(
         ForeignKey(
@@ -72,10 +63,6 @@ class Auction(
         "Upload",
         back_populates="auctions",
     )
-
-    # ==========================================================
-    # Basic Auction Details
-    # ==========================================================
 
     asset_type: Mapped[str] = mapped_column(
         String(100),
@@ -112,10 +99,6 @@ class Auction(
         default="",
     )
 
-    # ==========================================================
-    # Price Details
-    # ==========================================================
-
     auction_start_price: Mapped[Decimal] = mapped_column(
         Numeric(15, 2),
         default=Decimal("0.00"),
@@ -131,10 +114,6 @@ class Auction(
         default="INR",
     )
 
-    # ==========================================================
-    # Auction Schedule
-    # ==========================================================
-
     auction_start_datetime: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -149,10 +128,6 @@ class Auction(
         String(50),
         default="Pending",
     )
-
-    # ==========================================================
-    # Auto Extension
-    # ==========================================================
 
     auto_extension: Mapped[bool] = mapped_column(
         Boolean,
@@ -174,10 +149,6 @@ class Auction(
         default="",
     )
 
-    # ==========================================================
-    # Inspection Schedule
-    # ==========================================================
-
     inspection_from_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -192,10 +163,6 @@ class Auction(
         String(255),
         default="",
     )
-
-    # ==========================================================
-    # EMD Details
-    # ==========================================================
 
     emd_bank_name: Mapped[str] = mapped_column(
         String(255),
@@ -217,10 +184,6 @@ class Auction(
         default=Decimal("0.00"),
     )
 
-    # ==========================================================
-    # Authorized Officer
-    # ==========================================================
-
     authorized_officer_name: Mapped[str] = mapped_column(
         String(255),
         default="",
@@ -231,20 +194,10 @@ class Auction(
         default="",
     )
 
-    # ==========================================================
-    # Payment and Interest Fields
-    # ==========================================================
-
     payment_type: Mapped[str] = mapped_column(
         String(50),
         default="",
     )
-
-
-
-    # ==========================================================
-    # Remarks and Confidence Score
-    # ==========================================================
 
     remarks: Mapped[str] = mapped_column(
         Text,
@@ -256,18 +209,10 @@ class Auction(
         default=0.0,
     )
 
-    # ==========================================================
-    # Added Columns for Mapped Details
-    # ==========================================================
-
-
-
     possession_type: Mapped[str] = mapped_column(
         String(100),
         default="",
     )
-
-
 
     asset_id: Mapped[str] = mapped_column(
         String(100),
@@ -422,4 +367,4 @@ class Auction(
     event_type: Mapped[str] = mapped_column(
         String(100),
         default="",
-    )
+    )

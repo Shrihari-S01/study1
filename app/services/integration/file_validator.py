@@ -31,11 +31,9 @@ ALLOWED_MIME_TYPES = {
     "application/octet-stream",  # Fallback for some clients
 }
 
-
 class FileValidationError(Exception):
     """Custom exception raised when file validation fails."""
     pass
-
 
 class FileValidatorService:
     """

@@ -15,7 +15,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class ImageCleaner:
     """
     Clean newspaper images before OCR.
@@ -28,10 +27,6 @@ class ImageCleaner:
         logger.info(
             "Image Cleaner Initialized."
         )
-
-    # ==========================================================
-    # Clean Image
-    # ==========================================================
 
     def process(
         self,
@@ -94,10 +89,6 @@ class ImageCleaner:
 
         return output_path
 
-    # ==========================================================
-    # Convert to Gray
-    # ==========================================================
-
     def to_gray(
         self,
         image: np.ndarray,
@@ -117,10 +108,6 @@ class ImageCleaner:
             )
 
         return image
-
-    # ==========================================================
-    # Remove Noise
-    # ==========================================================
 
     def remove_noise(
         self,
@@ -143,10 +130,6 @@ class ImageCleaner:
             21,
 
         )
-
-    # ==========================================================
-    # Adaptive Threshold
-    # ==========================================================
 
     def adaptive_threshold(
         self,
@@ -171,10 +154,6 @@ class ImageCleaner:
             15,
 
         )
-
-    # ==========================================================
-    # Remove Small Dots
-    # ==========================================================
 
     def remove_small_noise(
         self,
@@ -214,10 +193,6 @@ class ImageCleaner:
 
         return image
 
-    # ==========================================================
-    # Median Blur
-    # ==========================================================
-
     def median_blur(
         self,
         image: np.ndarray,
@@ -234,10 +209,6 @@ class ImageCleaner:
             kernel_size,
 
         )
-
-    # ==========================================================
-    # Gaussian Blur
-    # ==========================================================
 
     def gaussian_blur(
         self,
@@ -257,10 +228,6 @@ class ImageCleaner:
             0,
 
         )
-
-    # ==========================================================
-    # Sharpen Image
-    # ==========================================================
 
     def sharpen(
         self,
@@ -294,10 +261,6 @@ class ImageCleaner:
 
         )
 
-    # ==========================================================
-    # Invert Image
-    # ==========================================================
-
     def invert(
         self,
         image: np.ndarray,
@@ -311,10 +274,6 @@ class ImageCleaner:
             image,
 
         )
-
-    # ==========================================================
-    # Resize Image
-    # ==========================================================
 
     def resize(
         self,
@@ -342,10 +301,6 @@ class ImageCleaner:
 
         )
 
-    # ==========================================================
-    # CLAHE Contrast
-    # ==========================================================
-
     def enhance_contrast(
         self,
         image: np.ndarray,
@@ -367,10 +322,6 @@ class ImageCleaner:
             image,
 
         )
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def is_ready(
         self,

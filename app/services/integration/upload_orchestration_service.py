@@ -47,7 +47,6 @@ from app.schemas.integration_schemas import (
 
 logger = get_logger(__name__)
 
-
 class UploadOrchestrationService:
     """
     Orchestrates decoupled execution paths for pure AI extraction and PHP insertion.
@@ -75,7 +74,9 @@ class UploadOrchestrationService:
         """
         Guarantees 100% field translation from any extracted dictionary format (raw canonical or mapped PHP) into PHP payload keys.
         """
-        payload = dict(extracted_dict)
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
+        norm_dict = CanonicalAliasNormalizer.normalize_record_aliases(extracted_dict)
+        payload = dict(norm_dict)
 
         # 1. Auction Number
         if not payload.get("auction_number"):
@@ -96,10 +97,10 @@ class UploadOrchestrationService:
                     break
 
         if extracted_price:
+            payload["reserve_price"] = extracted_price
             payload["reserver_price"] = extracted_price
+            payload["p_reserver_price"] = extracted_price
             payload["auction_start_price"] = extracted_price
-        elif not payload.get("reserver_price"):
-            payload["reserver_price"] = ""
 
         # 4. Borrower Name
         if not payload.get("borrower_name"):
@@ -115,10 +116,16 @@ class UploadOrchestrationService:
             payload["institution_seller"] = str(payload.get("seller_name") or payload.get("vendor_name") or payload.get("bank_name") or payload.get("institution_seller") or "")
 
         # 7. EMD Price & Increment Price
-        if not payload.get("emd_price") and payload.get("emd_amount"):
-            payload["emd_price"] = str(payload.get("emd_amount"))
-        if not payload.get("increment_price") and payload.get("bid_increment"):
-            payload["increment_price"] = str(payload.get("bid_increment"))
+        emd_val = str(payload.get("emd_price") or payload.get("emd_amount") or payload.get("pre_bid_emd") or "")
+        if emd_val:
+            payload["emd_price"] = emd_val
+            payload["emd_amount"] = emd_val
+            payload["pre_bid_emd"] = emd_val
+
+        inc_val = str(payload.get("increment_price") or payload.get("bid_increment") or "")
+        if inc_val:
+            payload["increment_price"] = inc_val
+            payload["bid_increment"] = inc_val
 
         # 8. Auction Live Status (Map human text 'Pending' -> 1-char DB code 'N')
         raw_live_status = payload.get("auction_live_status") or payload.get("live_status") or "Pending"
@@ -131,6 +138,7 @@ class UploadOrchestrationService:
         payload = CentralizedPHPPayloadNormalizer.normalize_payload(payload)
 
         return payload
+
 
     async def process_document(
         self,
@@ -226,7 +234,10 @@ class UploadOrchestrationService:
             # STEP 2: Gemini Record Log
             logger.info("[%s] STEP 2: Gemini Record #%d (ID: '%s') - Input Raw Record Keys: %d", processing_id, idx, auc_num, len(raw_record))
 
+            from app.services.integration.field_lifecycle_tracer import FieldLifecycleTracer
+
             common_schema = self.schema_builder.build_schema(raw_record, lot_index=idx)
+            FieldLifecycleTracer.check_and_log_field_loss(raw_record, common_schema, "Extraction -> CommonAISchema", lot_index=idx)
             self.stage_logger.log_stage_common_schema(processing_id, idx, common_schema)
 
             is_schema_valid, schema_errors = self.ai_schema_validator.validate_schema(common_schema, lot_index=idx)
@@ -237,20 +248,30 @@ class UploadOrchestrationService:
             self.stage_logger.log_stage_ai_validation(processing_id, idx, is_schema_valid, is_business_valid, all_ai_errors)
 
             norm_schema = self.normalizer.normalize_schema(common_schema, lot_index=idx)
+            FieldLifecycleTracer.check_and_log_field_loss(common_schema, norm_schema, "CommonAISchema -> DataNormalizer", lot_index=idx)
             self.stage_logger.log_stage_normalization(processing_id, idx, norm_schema)
 
             unmerged_payload = self.payload_mapper.map_to_php_payload(norm_schema=norm_schema, lot_index=idx)
+            FieldLifecycleTracer.check_and_log_field_loss(norm_schema, unmerged_payload, "DataNormalizer -> PayloadMapper", lot_index=idx)
             self.stage_logger.log_stage_payload_mapping(processing_id, idx, unmerged_payload)
 
             mapped_payload = BusinessDefaultInjector.inject_defaults(unmerged_payload, lot_index=idx)
+            FieldLifecycleTracer.check_and_log_field_loss(unmerged_payload, mapped_payload, "PayloadMapper -> BusinessDefaultInjector", lot_index=idx)
             self.stage_logger.log_stage_business_defaults(processing_id, idx, mapped_payload)
 
-            if not ai_valid:
+            # Also run Pre-PHP Consistency Checker against raw OCR text if present
+            from app.services.integration.consistency_checker import PrePHPConsistencyChecker
+            raw_ocr_txt = str(raw_record.get("raw_ocr_text") or raw_record.get("ocr_text") or "")
+            is_pre_php_consistent, pre_php_warnings = PrePHPConsistencyChecker.check_extraction_consistency(
+                ocr_text=raw_ocr_txt, final_payload=mapped_payload, lot_index=idx
+            )
+
+            if not ai_valid or not is_pre_php_consistent:
                 validation_failed_count += 1
                 mapped_payload["record_status"] = "PARTIAL"
                 mapped_payload["needs_manual_review"] = True
-                mapped_payload["validation_errors"] = all_ai_errors
-                logger.warning("[%s] MARK PARTIAL RECORD #%d (ID: '%s') - Stage: AI_VALIDATION_INCOMPLETE - Errors: %s. Preserving for manual review.", processing_id, idx, auc_num, all_ai_errors)
+                mapped_payload["validation_errors"] = all_ai_errors + pre_php_warnings
+                logger.warning("[%s] MARK PARTIAL RECORD #%d (ID: '%s') - Stage: INCOMPLETE_EXTRACTION / CONSISTENCY_WARNING - Errors: %s. Preserving for manual review.", processing_id, idx, auc_num, all_ai_errors + pre_php_warnings)
             else:
                 mapped_payload["record_status"] = "COMPLETE"
                 mapped_payload["needs_manual_review"] = False
@@ -291,9 +312,58 @@ class UploadOrchestrationService:
                 mapped_payload["needs_manual_review"] = True
                 logger.warning("[%s] MARK PARTIAL RECORD #%d (ID: '%s') - Stage: CONSISTENCY_AUDIT_WARNING - Critical Errors: %d. Preserving for manual review.", processing_id, idx, auc_num, consistency_report.critical_errors_count)
 
+            # COMPACT MATRIX TABLE & FIRST LOSS REPORT (Requirements #1 & #11)
+            FieldLifecycleTracer.print_compact_lifecycle_table(
+                ocr_dict={"borrower_name": raw_record.get("borrower_name"), "reserve_price": raw_record.get("reserve_price")},
+                llm_dict=raw_record,
+                parser_dict=raw_record,
+                canonical_dict=norm_schema,
+                mapper_dict=unmerged_payload,
+                schema_dict=common_schema,
+                norm_dict=norm_schema,
+                php_dict=mapped_payload,
+                lot_index=idx,
+            )
+
+            # FINAL DIAGNOSTIC REPORT (Requirement #9)
+            logger.info(
+                "\n==================================================\n"
+                "[FINAL DIAGNOSTIC REPORT - LOT #%d]\n"
+                "Auction Number      : %s\n"
+                "OCR Confidence      : %.2f\n"
+                "OCR Text Length     : %d chars\n"
+                "Borrower Name       : %r\n"
+                "Reserve Price       : %r\n"
+                "Auction Start Price : %r\n"
+                "EMD Price           : %r\n"
+                "Increment Price     : %r\n"
+                "Product Location    : %r\n"
+                "Property Address    : %r\n"
+                "Auction Details     : %r\n"
+                "Record Status       : %s\n"
+                "Needs Manual Review : %s\n"
+                "==================================================",
+                idx,
+                mapped_payload.get("auction_number", ""),
+                confidence,
+                len(raw_ocr_txt),
+                mapped_payload.get("borrower_name", ""),
+                mapped_payload.get("reserve_price") or mapped_payload.get("reserver_price", ""),
+                mapped_payload.get("auction_start_price", ""),
+                mapped_payload.get("emd_price") or mapped_payload.get("emd_amount", ""),
+                mapped_payload.get("increment_price", ""),
+                mapped_payload.get("product_location", ""),
+                mapped_payload.get("property_address", ""),
+                (mapped_payload.get("auction_details") or "")[:60],
+                mapped_payload.get("record_status", "COMPLETE"),
+                mapped_payload.get("needs_manual_review", False),
+            )
+
+
             # STEP 4: Validated Auction Record APPEND
             extracted_auction_records.append(mapped_payload)
             logger.info("[%s] STEP 4: Auction Record #%d (ID: '%s') APPENDED SUCCESSFULLY! Status: %s, Current Count: %d", processing_id, idx, auc_num, mapped_payload.get("record_status", "COMPLETE"), len(extracted_auction_records))
+
 
         from app.services.integration.payload_sanitizer import sanitize_json_payload
         extracted_auction_records = sanitize_json_payload(extracted_auction_records)
@@ -479,16 +549,9 @@ class UploadOrchestrationService:
             # 4. Validate PHP payload
             is_php_valid, php_val_errors = self.php_validator.validate_php_payload(final_php_payload, lot_index=lot_index)
             if not is_php_valid:
-                err_detail = "Mapped PHP Payload validation failed: " + "; ".join(php_val_errors)
-                logger.warning("[%s][Record #%d] %s", processing_id, lot_index, err_detail)
-                return AuctionSubmissionResult(
-                    record_no=lot_index,
-                    auction_number=auction_num,
-                    status="FAILED",
-                    needs_manual_review=True,
-                    php_record_id="",
-                    error=err_detail,
-                )
+                err_detail = "Mapped PHP Payload validation warning: " + "; ".join(php_val_errors)
+                logger.warning("[%s][Record #%d] %s. Preserving extracted fields and marking needs_manual_review=True.", processing_id, lot_index, err_detail)
+                needs_manual_review = True
 
             # 5. Sanitize and validate JSON payload serializability
             from app.services.integration.payload_sanitizer import validate_and_serialize_json_payload

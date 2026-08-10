@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import text
+# pyrefly: ignore [missing-import]
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -23,19 +24,9 @@ from sqlalchemy.ext.asyncio import (
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
-
-# ==========================================================
-# Configuration
-# ==========================================================
-
 settings = get_settings()
 
 logger = get_logger(__name__)
-
-
-# ==========================================================
-# Async Engine & Session Initialization
-# ==========================================================
 
 def init_database() -> tuple[AsyncEngine, async_sessionmaker]:
     url = settings.database_url
@@ -93,11 +84,6 @@ def init_database() -> tuple[AsyncEngine, async_sessionmaker]:
 
 engine, AsyncSessionLocal = init_database()
 
-
-# ==========================================================
-# Database Dependency
-# ==========================================================
-
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI database dependency.
@@ -117,11 +103,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         finally:
 
             await session.close()
-
-
-# ==========================================================
-# Database Connection Test
-# ==========================================================
 
 async def check_database_connection() -> bool:
     """
@@ -157,11 +138,6 @@ async def check_database_connection() -> bool:
         )
 
         return False
-
-
-# ==========================================================
-# Shutdown
-# ==========================================================
 
 async def close_database() -> None:
     """

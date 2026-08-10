@@ -17,10 +17,6 @@ from app.database.connection import (
     check_database_connection,
 )
 
-# ==========================================================
-# Import Models
-# ==========================================================
-
 # IMPORTANT:
 # Import every model here so SQLAlchemy
 # registers them before create_all().
@@ -28,15 +24,9 @@ from app.database.connection import (
 from app.models.upload import Upload
 from app.models.auction import Auction
 
-
 logger = get_logger(__name__)
 
 settings = get_settings()
-
-
-# ==========================================================
-# Create Directories
-# ==========================================================
 
 def create_directories() -> None:
     """
@@ -75,11 +65,6 @@ def create_directories() -> None:
 
         )
 
-
-# ==========================================================
-# Create Database Tables
-# ==========================================================
-
 async def create_tables() -> None:
     """
     Create database tables.
@@ -110,11 +95,6 @@ async def create_tables() -> None:
         )
 
         raise
-
-
-# ==========================================================
-# Initialize Application
-# ==========================================================
 
 async def initialize_database() -> None:
     """

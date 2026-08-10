@@ -15,11 +15,6 @@ from app.services.storage.database_service import DatabaseService
 
 router = APIRouter()
 
-
-# ==========================================================
-# Application Health
-# ==========================================================
-
 @router.get(
     "/",
     summary="Application Health",
@@ -49,11 +44,6 @@ async def application_health(
 
     }
 
-
-# ==========================================================
-# Service Information
-# ==========================================================
-
 @router.get(
     "/info",
     summary="Application Information",
@@ -78,5 +68,4 @@ async def information(
         "pipeline": pipeline.info(),
 
     }
-
 

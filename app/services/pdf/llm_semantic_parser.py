@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class LLMSemanticParser:
     """
     Stage 14: LLM Semantic Parser for long descriptions and remarks ONLY.

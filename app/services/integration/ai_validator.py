@@ -14,7 +14,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class AISchemaValidator:
     """
     Validates mandatory existence of core AI extraction fields.
@@ -50,7 +49,6 @@ class AISchemaValidator:
         is_valid = len(errors) == 0
         logger.info("[%d] AI Schema Validation: valid=%s, critical_errors=%d", lot_index, is_valid, len(errors))
         return is_valid, errors
-
 
 class AIBusinessValidator:
     """

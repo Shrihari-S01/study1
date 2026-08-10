@@ -18,7 +18,6 @@ logger = get_logger(__name__)
 
 settings = get_settings()
 
-
 class FileManager:
     """
     Handles all file operations.
@@ -35,10 +34,6 @@ class FileManager:
         self.temp_dir = settings.temp_dir
 
         self.create_directories()
-
-    # ==========================================================
-    # Create Directories
-    # ==========================================================
 
     def create_directories(
         self,
@@ -73,10 +68,6 @@ class FileManager:
             "Upload directories initialized."
         )
 
-    # ==========================================================
-    # Save File
-    # ==========================================================
-
     async def save_file(
         self,
         file: UploadFile,
@@ -109,3 +100,49 @@ class FileManager:
         except Exception as exc:
             logger.exception("Failed to write uploaded file to disk.")
             raise exc
+
+    def delete_file(self, file_path: str | Path) -> bool:
+        """Safely delete a single file if it exists."""
+        try:
+            path = Path(file_path) if isinstance(file_path, str) else file_path
+            if path.exists() and path.is_file():
+                path.unlink()
+                logger.debug("Deleted temporary file: %s", path)
+                return True
+        except Exception as exc:
+            logger.warning("Failed to delete file %s: %s", file_path, exc)
+        return False
+
+    def cleanup_post_processing(
+        self,
+        split_paths: list[str | Path] | None = None,
+        processed_paths: list[str | Path] | None = None,
+        temp_paths: list[str | Path] | None = None,
+    ) -> None:
+        """
+        Execute post-processing file cleanup based on application settings.
+        
+        Rules:
+        - processed/: Deleted if cleanup_after_processing or delete_temp_files is True.
+        - temp/: Deleted if cleanup_after_processing or delete_temp_files is True.
+        - split/: Deleted if keep_split_images is False AND cleanup_after_processing is True.
+        """
+        if not (settings.cleanup_after_processing or settings.delete_temp_files):
+            return
+
+        # 1. Clean up intermediate processed images (e.g. enhanced, deskewed)
+        if processed_paths:
+            for p in processed_paths:
+                self.delete_file(p)
+
+        # 2. Clean up temp crop/debug files
+        if temp_paths:
+            for t in temp_paths:
+                self.delete_file(t)
+
+        # 3. Clean up split notice images if keep_split_images is False
+        if not settings.keep_split_images and split_paths:
+            for s in split_paths:
+                self.delete_file(s)
+
+        logger.info("Post-processing file cleanup completed.")

@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class DocumentClassifier:
     """
     Classifies PDF document layout type based on structural headers and keywords.

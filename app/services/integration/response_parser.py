@@ -34,7 +34,6 @@ MYSQL_ERROR_KEYWORDS = [
     "truncated",
 ]
 
-
 class ParsedPHPResponse(NamedTuple):
     success: bool
     status_category: str  # 'INSERTED' | 'DUPLICATE' | 'VALIDATION_ERROR' | 'DATABASE_ERROR' | 'SERVER_ERROR'
@@ -45,7 +44,6 @@ class ParsedPHPResponse(NamedTuple):
     @property
     def is_success(self) -> bool:
         return self.success
-
 
 class PHPResponseParser:
     """

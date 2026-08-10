@@ -12,11 +12,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-
-# ==========================================================
-# Phase 1 Document Extraction Response (Zero PHP Fields)
-# ==========================================================
-
 class DocumentProcessingResponse(BaseModel):
     """
     Response model for Phase 1 POST /integration/process-document.
@@ -37,11 +32,6 @@ class DocumentProcessingResponse(BaseModel):
         description="Extracted auction record dictionaries ready for UI review",
     )
     message: str = Field(..., description="Human-readable status summary message")
-
-
-# ==========================================================
-# Phase 2 Submission Request DTO (Angular -> Backend -> PHP)
-# ==========================================================
 
 class AuctionSubmissionRequest(BaseModel):
     """
@@ -71,11 +61,6 @@ class AuctionSubmissionRequest(BaseModel):
     extracted_auction: Optional[Dict[str, Any]] = Field(default=None, description="Extracted auction JSON dictionary from Phase 1")
     extracted_auctions: Optional[List[Dict[str, Any]]] = Field(default=None, description="Extracted auction JSON dictionaries array from Phase 1")
 
-
-# ==========================================================
-# Phase 2 Submission Response (PHP Insert API Output)
-# ==========================================================
-
 class AuctionSubmissionResult(BaseModel):
     """
     Per-record status result for batch PHP insertion.
@@ -86,7 +71,6 @@ class AuctionSubmissionResult(BaseModel):
     needs_manual_review: bool = Field(default=False, description="Flag indicating if record needs manual review due to missing optional fields like product_location")
     php_record_id: Optional[str] = Field(default="", description="Returned PHP record ID if inserted")
     error: Optional[str] = Field(default="", description="Error description if record failed")
-
 
 class AuctionSubmissionResponse(BaseModel):
     """
@@ -107,7 +91,6 @@ class AuctionSubmissionResponse(BaseModel):
     php_response_raw: Optional[Dict[str, Any]] = Field(default=None, description="Raw response payload from PHP")
     error_detail: Optional[str] = Field(default=None, description="Error detail if insertion failed")
     message: str = Field(..., description="Human-readable status message")
-
 
 # Backward Compatibility Schemas
 class IntegrationMasterData(BaseModel):

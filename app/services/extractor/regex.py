@@ -12,7 +12,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class RegexExtractor:
     """
     Extract structured auction fields from OCR text.
@@ -23,11 +22,6 @@ class RegexExtractor:
         logger.info(
             "Regex Extractor Initialized."
         )
-
-
-    # ==========================================================
-    # Extract Fields
-    # ==========================================================
 
     def extract(
         self,
@@ -121,10 +115,6 @@ class RegexExtractor:
         return result
     
 
-    # ==========================================================
-    # Regex Search
-    # ==========================================================
-
     def search(
         self,
         pattern: str,
@@ -152,10 +142,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Clean Value
-    # ==========================================================
-
     def clean(
         self,
         value: str,
@@ -176,12 +162,6 @@ class RegexExtractor:
 
         return value.strip()
 
-
-
-    # ==========================================================
-    # Normalize Currency
-    # ==========================================================
-
     def normalize_amount(
         self,
         value: str,
@@ -198,11 +178,6 @@ class RegexExtractor:
 
         return value.strip()
 
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
-
     def is_ready(
         self,
     ) -> bool:
@@ -212,10 +187,6 @@ class RegexExtractor:
 
         return True
     
-
-    # ==========================================================
-    # Bank Name
-    # ==========================================================
 
     def bank_name(
         self,
@@ -266,10 +237,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Branch Name
-    # ==========================================================
-
     def branch_name(
         self,
         text: str,
@@ -309,25 +276,26 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Borrower Name
-    # ==========================================================
-
     def borrower_name(
         self,
         text: str,
     ) -> str:
         """
         Extract borrower name.
+        Matches Borrower, Borrower Name, Borrower(s), Mortgagor, Mortgagor Name,
+        Guarantor, Owner, Applicant, Co-Applicant, Loan Borrower.
+        Strips address, property description, phone numbers, bank details, and officer details.
         """
         clean_text = self.clean(text)
 
-        # 1. First look for explicit Borrower label prefixes
+        # 1. Look for explicit Borrower / Mortgagor / Guarantor / Owner / Applicant labels
         patterns = [
-            r"Borrower\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
-            r"Borrower Name\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
-            r"Name of Borrower\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
-            r"Name of the Borrower\s*[:\-]?\s*([A-Za-z0-9 .,&()-]+)",
+            r"(?:Borrower\(s\)|Borrowers|Borrower\s*Name|Borrower|Loan\s*Borrower)\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
+            r"(?:Mortgagor\s*Name|Mortgagor)\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
+            r"(?:Guarantor\s*Name|Guarantor)\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
+            r"(?:Owner\s*Name|Owner|Property\s*Owner)\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
+            r"(?:Co-Applicant|Applicant\s*Name|Applicant)\s*[:\-]\s*([A-Za-z0-9 .,&()-]+)",
+            r"Name\s*of\s*(?:the\s*)?(?:Borrower|Mortgagor|Guarantor)\s*[:\-]?\s*([A-Za-z0-9 .,&()-]+)",
         ]
 
         for pattern in patterns:
@@ -336,12 +304,16 @@ class RegexExtractor:
                 clean_text,
             )
             if value:
-                # Strip director/proprietor/lot suffixes if matched
-                value = re.split(r"\b(?:Through|Thru|S/o|D/o|W/o|Director|Proprietor|Description|Property|House|Factory|Plot)\b", value, flags=re.IGNORECASE)[0]
-                val_clean = self.clean(value)
+                # Strip address, property description, phone numbers, bank details, or officer details
+                value = re.split(
+                    r"\b(?:Through|Thru|S/o|D/o|W/o|having|registered|address|r/o|residing|situated|located|Description|Property|House|Factory|Plot|Flat|Survey|Contact|Officer|Bank|Branch|Account|A/C|IFSC)\b",
+                    value,
+                    flags=re.IGNORECASE
+                )[0]
+                val_clean = self.clean(value).rstrip(",.-;:")
                 if "fineine" in val_clean.lower():
                     val_clean = re.sub(r"fineine", "Fineline", val_clean, flags=re.IGNORECASE)
-                if len(val_clean) > 2:
+                if len(val_clean) > 2 and not any(w in val_clean.lower() for w in ["bank", "branch", "ifsc", "officer", "manager"]):
                     return val_clean
 
         # 2. Match honorific prefixes (M/s, Mr, Mrs, Shri, Smt)
@@ -359,22 +331,22 @@ class RegexExtractor:
                 clean_text,
             )
             if value:
-                # Filter out obvious false positives like IFSC, branch, bank etc.
                 val_lower = value.lower()
-                if not any(w in val_lower for w in ["branch", "ifsc", "bank", "canara", "office", "road", "street"]):
-                    value = re.split(r"\b(?:Through|Thru|S/o|D/o|W/o|Director|Proprietor|Description|Property|House|Factory|Plot)\b", value, flags=re.IGNORECASE)[0]
-                    val_clean = self.clean(value)
+                if not any(w in val_lower for w in ["branch", "ifsc", "bank", "canara", "office", "road", "street", "officer", "manager"]):
+                    value = re.split(
+                        r"\b(?:Through|Thru|S/o|D/o|W/o|having|registered|address|r/o|residing|situated|located|Description|Property|House|Factory|Plot|Flat|Survey|Contact|Officer|Bank|Branch|Account|A/C|IFSC)\b",
+                        value,
+                        flags=re.IGNORECASE
+                    )[0]
+                    val_clean = self.clean(value).rstrip(",.-;:")
                     if "fineine" in val_clean.lower():
                         val_clean = re.sub(r"fineine", "Fineline", val_clean, flags=re.IGNORECASE)
                     if len(val_clean) > 2:
                         return val_clean
 
         return ""
-    
 
-    # ==========================================================
-    # Co-Borrower
-    # ==========================================================
+    
 
     def co_borrower(
         self,
@@ -410,10 +382,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Guarantor
-    # ==========================================================
-
     def guarantor(
         self,
         text: str,
@@ -447,10 +415,6 @@ class RegexExtractor:
 
         return ""
     
-
-    # ==========================================================
-    # Loan Account Number
-    # ==========================================================
 
     def loan_account_number(
         self,
@@ -489,10 +453,6 @@ class RegexExtractor:
 
         return ""
     
-
-    # ==========================================================
-    # Property Type
-    # ==========================================================
 
     def property_type(
         self,
@@ -548,10 +508,6 @@ class RegexExtractor:
 
         return ""
     
-
-    # ==========================================================
-    # Asset Type
-    # ==========================================================
 
     def asset_type(self, text: str) -> str:
         """
@@ -647,11 +603,6 @@ class RegexExtractor:
                     return val
         return ""
 
-
-    # ==========================================================
-    # Possession Type
-    # ==========================================================
-
     def possession_type(
         self,
         text: str,
@@ -700,10 +651,6 @@ class RegexExtractor:
 
         return ""
 
-    # ==========================================================
-    # Auction Description, Location & Type
-    # ==========================================================
-
     def auction_description(self, text: str) -> str:
         """
         Extract property/asset description.
@@ -743,10 +690,6 @@ class RegexExtractor:
         return "E-Auction"
     
 
-    # ==========================================================
-    # Property Area
-    # ==========================================================
-
     def property_area(
         self,
         text: str,
@@ -779,10 +722,6 @@ class RegexExtractor:
                 )
 
         return ""
-
-    # ==========================================================
-    # Price Heuristics
-    # ==========================================================
 
     def find_all_amounts(self, text: str) -> list[float]:
         """
@@ -848,8 +787,8 @@ class RegexExtractor:
                 # Parse currency string using standard Indian/Western groupings
                 s = w_strip.replace(" ", "")
                 val = None
-                # Check for decimal paise at the end (.xx)
-                if re.search(r"\.\d{2}$", s):
+                # Check for decimal paise at the end (.xx where xx is 2 digits)
+                if re.search(r"\.\d{2}$", s) and not re.search(r"\.\d{3,}$", s):
                     parts = s.split(".")
                     decimal_part = parts[-1]
                     integer_part = "".join(parts[:-1]).replace(",", "").replace(".", "")
@@ -858,7 +797,7 @@ class RegexExtractor:
                     except ValueError:
                         pass
                 else:
-                    # No decimal paise, all periods and commas are grouping separators
+                    # All periods and commas are Indian / Western digit separators
                     cleaned = s.replace(",", "").replace(".", "")
                     try:
                         val = float(cleaned)
@@ -942,10 +881,6 @@ class RegexExtractor:
             
         return "", ""
 
-    # ==========================================================
-    # Reserve Price
-    # ==========================================================
-
     def reserve_price(
         self,
         text: str,
@@ -978,10 +913,6 @@ class RegexExtractor:
         rp, _ = self.extract_prices_heuristically(text)
         return rp
     
-
-    # ==========================================================
-    # EMD Amount
-    # ==========================================================
 
     def emd(
         self,
@@ -1016,10 +947,6 @@ class RegexExtractor:
         return emd_val
     
 
-    # ==========================================================
-    # Bid Increment
-    # ==========================================================
-
     def bid_increment(
         self,
         text: str,
@@ -1052,10 +979,6 @@ class RegexExtractor:
 
         return ""
     
-
-    # ==========================================================
-    # Auction Date
-    # ==========================================================
 
     def auction_date(
         self,
@@ -1091,10 +1014,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Inspection Date
-    # ==========================================================
-
     def inspection_date(
         self,
         text: str,
@@ -1127,10 +1046,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Demand Notice Date
-    # ==========================================================
-
     def demand_notice_date(
         self,
         text: str,
@@ -1162,11 +1077,6 @@ class RegexExtractor:
 
         return ""
 
-
-    # ==========================================================
-    # Sale Notice Date
-    # ==========================================================
-
     def sale_notice_date(
         self,
         text: str,
@@ -1196,9 +1106,6 @@ class RegexExtractor:
 
         return ""
     
-    # ==========================================================
-    # Property Address
-    # ==========================================================
 
     def property_address(
         self,
@@ -1243,11 +1150,6 @@ class RegexExtractor:
                     return address
 
         return ""
-
-
-    # ==========================================================
-    # District
-    # ==========================================================
 
     def district(
         self,
@@ -1325,11 +1227,6 @@ class RegexExtractor:
 
         return ""
 
-
-    # ==========================================================
-    # State
-    # ==========================================================
-
     def state(
         self,
         text: str,
@@ -1373,10 +1270,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # PIN Code
-    # ==========================================================
-
     def pin_code(
         self,
         text: str,
@@ -1413,12 +1306,6 @@ class RegexExtractor:
 
         return ""
 
-
-
-    # ==========================================================
-    # Survey Number
-    # ==========================================================
-
     def survey_number(
         self,
         text: str,
@@ -1450,11 +1337,6 @@ class RegexExtractor:
                 return value
 
         return ""
-
-
-    # ==========================================================
-    # Door Number
-    # ==========================================================
 
     def door_number(
         self,
@@ -1491,10 +1373,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Village
-    # ==========================================================
-
     def village(
         self,
         text: str,
@@ -1525,9 +1403,6 @@ class RegexExtractor:
 
         return ""
     
-    # ==========================================================
-    # Contact Person
-    # ==========================================================
 
     def contact_person(
         self,
@@ -1562,10 +1437,6 @@ class RegexExtractor:
 
         return ""
     
-
-    # ==========================================================
-    # Contact Number
-    # ==========================================================
 
     def contact_number(
         self,
@@ -1604,10 +1475,6 @@ class RegexExtractor:
         return ""
     
 
-    # ==========================================================
-    # Email
-    # ==========================================================
-
     def email(
         self,
         text: str,
@@ -1625,11 +1492,6 @@ class RegexExtractor:
         )
 
         return value
-
-
-    # ==========================================================
-    # IFSC
-    # ==========================================================
 
     def ifsc(
         self,
@@ -1669,10 +1531,6 @@ class RegexExtractor:
                     return w_clean
 
         return ""
-
-    # ==========================================================
-    # Auction Datetime and Submission Extraction
-    # ==========================================================
 
     def auction_start_date_time(self, text: str) -> str:
         """
@@ -1716,10 +1574,6 @@ class RegexExtractor:
                 return f"{date_part} {time_part}".strip()
         return ""
 
-    # ==========================================================
-    # EMD Account Number
-    # ==========================================================
-
     def emd_account_no(
         self,
         text: str,
@@ -1736,10 +1590,6 @@ class RegexExtractor:
             if value:
                 return value
         return ""
-
-    # ==========================================================
-    # Authorized Officer
-    # ==========================================================
 
     def authorized_officer(
         self,
@@ -1770,11 +1620,6 @@ class RegexExtractor:
 
         return ""
 
-
-    # ==========================================================
-    # Remove Empty Fields
-    # ==========================================================
-
     def remove_empty(
         self,
         data: dict,
@@ -1799,9 +1644,6 @@ class RegexExtractor:
 
         }
     
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -1849,11 +1691,6 @@ class RegexExtractor:
 
         }
 
-
-    # ==========================================================
-    # Process OCR Text
-    # ==========================================================
-
     def process(
         self,
         text: str,
@@ -1877,11 +1714,6 @@ class RegexExtractor:
             "statistics": self.statistics(data),
 
         }
-
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def health_check(
         self,

@@ -12,11 +12,6 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-# ==========================================================
-# Base Schema
-# ==========================================================
-
 class AuctionBase(BaseModel):
     """
     Common auction fields.
@@ -57,10 +52,6 @@ class AuctionBase(BaseModel):
     borrower: str = Field(
         default="",
     )
-
-# ==========================================================
-# Auction Price Details
-# ==========================================================
 
     auction_start_price: Decimal = Field(
         default=Decimal("0.00"),
@@ -111,10 +102,6 @@ class AuctionBase(BaseModel):
         max_length=255,
     )
 
-    # ======================================================
-    # Inspection Schedule
-    # ======================================================
-
     inspection_from_date: Optional[datetime] = None
 
     inspection_to_date: Optional[datetime] = None
@@ -123,10 +110,6 @@ class AuctionBase(BaseModel):
         default="",
         max_length=255,
     )
-
-    # ======================================================
-    # EMD Details
-    # ======================================================
 
     emd_bank_name: str = Field(
         default="",
@@ -148,10 +131,6 @@ class AuctionBase(BaseModel):
         ge=0,
     )
 
-    # ======================================================
-    # Authorized Officer
-    # ======================================================
-
     authorized_officer_name: str = Field(
         default="",
         max_length=255,
@@ -169,12 +148,6 @@ class AuctionBase(BaseModel):
     payment_type: str = Field(
         default="",
     )
-
-
-
-    # ======================================================
-    # Additional Information
-    # ======================================================
 
     remarks: str = Field(
         default="",
@@ -302,10 +275,6 @@ class AuctionBase(BaseModel):
         le=1.0,
     )
 
-# ==========================================================
-# Create Schema
-# ==========================================================
-
 class AuctionCreate(AuctionBase):
     """
     Schema used for creating a new auction.
@@ -315,11 +284,6 @@ class AuctionCreate(AuctionBase):
         ...,
         description="Upload ID associated with this auction.",
     )
-
-
-# ==========================================================
-# Update Schema
-# ==========================================================
 
 class AuctionUpdate(BaseModel):
     """
@@ -386,8 +350,6 @@ class AuctionUpdate(BaseModel):
 
     payment_type: Optional[str] = None
 
-
-
     remarks: Optional[str] = None
 
     confidence_score: Optional[float] = None
@@ -450,10 +412,6 @@ class AuctionUpdate(BaseModel):
 
     event_type: Optional[str] = None
 
-# ==========================================================
-# Response Schema
-# ==========================================================
-
 class AuctionResponse(AuctionBase):
     """
     Response schema returned to the frontend.
@@ -470,11 +428,6 @@ class AuctionResponse(AuctionBase):
     created_at: datetime
 
     updated_at: datetime
-
-
-# ==========================================================
-# Auction Summary
-# ==========================================================
 
 class AuctionSummary(BaseModel):
     """
@@ -503,11 +456,6 @@ class AuctionSummary(BaseModel):
 
     confidence_score: float
 
-
-# ==========================================================
-# Auction List Response
-# ==========================================================
-
 class AuctionListResponse(BaseModel):
     """
     List of auctions.
@@ -516,11 +464,6 @@ class AuctionListResponse(BaseModel):
     total_records: int
 
     auctions: list[AuctionResponse]
-
-
-# ==========================================================
-# Auction Processing Response
-# ==========================================================
 
 class AuctionProcessResponse(BaseModel):
     """
@@ -541,11 +484,6 @@ class AuctionProcessResponse(BaseModel):
 
     auctions: list[AuctionResponse]
 
-
-# ==========================================================
-# Auction Delete Response
-# ==========================================================
-
 class AuctionDeleteResponse(BaseModel):
     """
     Delete response.
@@ -554,11 +492,6 @@ class AuctionDeleteResponse(BaseModel):
     success: bool
 
     message: str
-
-
-# ==========================================================
-# Auction Search Response
-# ==========================================================
 
 class AuctionSearchResponse(BaseModel):
     """

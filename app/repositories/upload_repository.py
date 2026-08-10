@@ -14,7 +14,6 @@ from app.models.upload import Upload
 
 logger = get_logger(__name__)
 
-
 class UploadRepository:
     """
     Repository for Upload table.
@@ -26,10 +25,6 @@ class UploadRepository:
     ) -> None:
 
         self.db = db
-
-    # ==========================================================
-    # Create Upload
-    # ==========================================================
 
     async def create(
         self,
@@ -52,10 +47,6 @@ class UploadRepository:
 
         return upload
 
-    # ==========================================================
-    # Get Upload By ID
-    # ==========================================================
-
     async def get_by_id(
         self,
         upload_id: str,
@@ -74,10 +65,6 @@ class UploadRepository:
 
         return result.scalar_one_or_none()
 
-    # ==========================================================
-    # Get Upload Number
-    # ==========================================================
-
     async def get_by_upload_number(
         self,
         upload_number: str,
@@ -95,10 +82,6 @@ class UploadRepository:
         )
 
         return result.scalar_one_or_none()
-
-    # ==========================================================
-    # Get All Uploads
-    # ==========================================================
 
     async def get_all(
         self,
@@ -122,10 +105,6 @@ class UploadRepository:
 
         return list(result.scalars().all())
 
-    # ==========================================================
-    # Update Upload
-    # ==========================================================
-
     async def update(
         self,
         upload: Upload,
@@ -144,10 +123,6 @@ class UploadRepository:
         )
 
         return upload
-
-    # ==========================================================
-    # Update Status
-    # ==========================================================
 
     async def update_status(
         self,
@@ -174,10 +149,6 @@ class UploadRepository:
         )
 
         return upload
-
-    # ==========================================================
-    # Update Statistics
-    # ==========================================================
 
     async def update_statistics(
         self,
@@ -213,10 +184,6 @@ class UploadRepository:
 
         return upload
 
-    # ==========================================================
-    # Delete Upload
-    # ==========================================================
-
     async def delete(
         self,
         upload: Upload,
@@ -233,10 +200,6 @@ class UploadRepository:
             "Upload deleted: %s",
             upload.upload_number,
         )
-
-    # ==========================================================
-    # Exists
-    # ==========================================================
 
     async def exists(
         self,

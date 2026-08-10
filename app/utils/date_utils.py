@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional
 
-
 SUPPORTED_DATE_FORMATS = [
 
     "%d/%m/%Y",
@@ -24,7 +23,6 @@ SUPPORTED_DATE_FORMATS = [
     "%Y-%m-%d",
 
 ]
-
 
 class DateUtils:
     """

@@ -22,7 +22,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, TimestampMixin
 
-
 class AuctionProcessingSession(Base, TimestampMixin):
     """
     Persistent stateful processing session model for 2-phase integration.

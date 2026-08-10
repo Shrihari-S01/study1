@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PriceParser:
     """
     Extracts financial values from a lot block text without arbitrary calculation.

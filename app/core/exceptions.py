@@ -8,11 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
-# ==========================================================
-# Base Exception
-# ==========================================================
-
 class AuctionAIException(Exception):
     """
     Base exception for the Auction Intelligence API.
@@ -52,11 +47,6 @@ class AuctionAIException(Exception):
 
         }
 
-
-# ==========================================================
-# Validation Exceptions
-# ==========================================================
-
 class ValidationException(AuctionAIException):
     """
     Raised when validation fails.
@@ -74,7 +64,6 @@ class ValidationException(AuctionAIException):
             details=details,
         )
 
-
 class InvalidFileException(AuctionAIException):
     """
     Invalid upload file.
@@ -89,7 +78,6 @@ class InvalidFileException(AuctionAIException):
             message=message,
             status_code=400,
         )
-
 
 class UnsupportedFileTypeException(AuctionAIException):
     """
@@ -106,11 +94,6 @@ class UnsupportedFileTypeException(AuctionAIException):
             status_code=415,
         )
 
-
-# ==========================================================
-# Upload Exceptions
-# ==========================================================
-
 class UploadException(AuctionAIException):
     """
     Upload failed.
@@ -125,7 +108,6 @@ class UploadException(AuctionAIException):
             message=message,
             status_code=400,
         )
-
 
 class FileStorageException(AuctionAIException):
     """
@@ -142,11 +124,6 @@ class FileStorageException(AuctionAIException):
             status_code=500,
         )
 
-
-# ==========================================================
-# Image Processing
-# ==========================================================
-
 class ImageProcessingException(AuctionAIException):
     """
     Image preprocessing failed.
@@ -161,7 +138,6 @@ class ImageProcessingException(AuctionAIException):
             message=message,
             status_code=500,
         )
-
 
 class LayoutDetectionException(AuctionAIException):
     """
@@ -178,7 +154,6 @@ class LayoutDetectionException(AuctionAIException):
             status_code=500,
         )
 
-
 class AuctionSplitException(AuctionAIException):
     """
     Auction splitting failed.
@@ -193,11 +168,6 @@ class AuctionSplitException(AuctionAIException):
             message=message,
             status_code=500,
         )
-
-
-# ==========================================================
-# OCR
-# ==========================================================
 
 class OCRException(AuctionAIException):
     """
@@ -214,11 +184,6 @@ class OCRException(AuctionAIException):
             status_code=500,
         )
 
-
-# ==========================================================
-# Extraction
-# ==========================================================
-
 class RegexExtractionException(AuctionAIException):
     """
     Regex extraction failed.
@@ -233,7 +198,6 @@ class RegexExtractionException(AuctionAIException):
             message=message,
             status_code=500,
         )
-
 
 class ParserException(AuctionAIException):
     """
@@ -250,7 +214,6 @@ class ParserException(AuctionAIException):
             status_code=500,
         )
 
-
 class LLMException(AuctionAIException):
     """
     Gemini API failed.
@@ -265,7 +228,6 @@ class LLMException(AuctionAIException):
             message=message,
             status_code=502,
         )
-
 
 class ConfidenceException(AuctionAIException):
     """
@@ -282,11 +244,6 @@ class ConfidenceException(AuctionAIException):
             status_code=422,
         )
 
-
-# ==========================================================
-# Database
-# ==========================================================
-
 class DatabaseException(AuctionAIException):
     """
     Database operation failed.
@@ -301,7 +258,6 @@ class DatabaseException(AuctionAIException):
             message=message,
             status_code=500,
         )
-
 
 class RecordNotFoundException(AuctionAIException):
     """
@@ -318,7 +274,6 @@ class RecordNotFoundException(AuctionAIException):
             status_code=404,
         )
 
-
 class DuplicateRecordException(AuctionAIException):
     """
     Duplicate record.
@@ -333,11 +288,6 @@ class DuplicateRecordException(AuctionAIException):
             message=message,
             status_code=409,
         )
-
-
-# ==========================================================
-# Processing
-# ==========================================================
 
 class ProcessingException(AuctionAIException):
     """
@@ -354,11 +304,6 @@ class ProcessingException(AuctionAIException):
             status_code=500,
         )
 
-
-# ==========================================================
-# Authentication
-# ==========================================================
-
 class AuthenticationException(AuctionAIException):
     """
     Authentication failed.
@@ -373,7 +318,6 @@ class AuthenticationException(AuctionAIException):
             message=message,
             status_code=401,
         )
-
 
 class AuthorizationException(AuctionAIException):
     """

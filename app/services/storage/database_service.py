@@ -15,7 +15,6 @@ from app.repositories.upload_repository import UploadRepository
 
 logger = get_logger(__name__)
 
-
 class DatabaseService:
     """
     Database Service.
@@ -33,10 +32,6 @@ class DatabaseService:
 
         logger.info("Database Service initialized.")
 
-    # ==========================================================
-    # Ready
-    # ==========================================================
-
     async def is_ready(self) -> bool:
         """
         Check whether the database is available.
@@ -50,20 +45,11 @@ class DatabaseService:
             logger.exception("Database is not ready.")
             return False
 
-
     async def commit(self) -> None:
         await self.db.commit()
 
-    # ==========================================================
-    # Rollback
-    # ==========================================================
-
     async def rollback(self) -> None:
         await self.db.rollback()
-
-    # ==========================================================
-    # Refresh
-    # ==========================================================
 
     async def refresh(
         self,
@@ -72,16 +58,8 @@ class DatabaseService:
 
         await self.db.refresh(obj)
 
-    # ==========================================================
-    # Close
-    # ==========================================================
-
     async def close(self) -> None:
         await self.db.close()
-
-    # ==========================================================
-    # Save Upload
-    # ==========================================================
 
     async def save_upload(
         self,
@@ -89,10 +67,6 @@ class DatabaseService:
     ):
 
         return await self.upload_repository.create(upload)
-
-    # ==========================================================
-    # Save Auction
-    # ==========================================================
 
     async def save_auction(
         self,
@@ -208,8 +182,6 @@ class DatabaseService:
 
             if not db_data.get("vendor_name"):
                 db_data["vendor_name"] = auction.get("vendor_name")
-
-
 
             if not db_data.get("remarks") and auction.get("remarks"):
                 db_data["remarks"] = auction["remarks"]
@@ -358,9 +330,17 @@ class DatabaseService:
             
             # If empty, fall back to 1 day before the auction at 17:00:00
             if not parsed_submit_dt and db_data.get("auction_start_datetime"):
-                from datetime import timedelta
-                parsed_submit_dt = db_data["auction_start_datetime"] - timedelta(days=1)
-                parsed_submit_dt = parsed_submit_dt.replace(hour=17, minute=0, second=0, microsecond=0)
+                from datetime import timedelta, datetime
+                auc_dt_val = db_data["auction_start_datetime"]
+                if isinstance(auc_dt_val, str):
+                    try:
+                        import dateutil.parser
+                        auc_dt_val = dateutil.parser.parse(auc_dt_val)
+                    except Exception:
+                        auc_dt_val = None
+                if isinstance(auc_dt_val, datetime):
+                    parsed_submit_dt = auc_dt_val - timedelta(days=1)
+                    parsed_submit_dt = parsed_submit_dt.replace(hour=17, minute=0, second=0, microsecond=0)
 
             if parsed_submit_dt:
                 parsed_submit_dt = force_auction_year(parsed_submit_dt)
@@ -372,14 +352,28 @@ class DatabaseService:
             # it is an OCR misread. Correct the month to match the auction month (7).
             auc_dt = db_data.get("auction_start_datetime")
             if auc_dt:
-                auc_month = auc_dt.month
-                for field in ["inspection_from_date", "inspection_to_date"]:
-                    val = db_data.get(field)
-                    if val and val.month > auc_month:
-                        try:
-                            db_data[field] = val.replace(month=auc_month)
-                        except Exception:
-                            pass
+                if isinstance(auc_dt, str):
+                    try:
+                        import dateutil.parser
+                        auc_dt = dateutil.parser.parse(auc_dt)
+                    except Exception:
+                        auc_dt = None
+                if isinstance(auc_dt, datetime):
+                    auc_month = auc_dt.month
+                    for field in ["inspection_from_date", "inspection_to_date"]:
+                        val = db_data.get(field)
+                        if isinstance(val, str):
+                            try:
+                                import dateutil.parser
+                                val = dateutil.parser.parse(val)
+                            except Exception:
+                                val = None
+                        if isinstance(val, datetime) and val.month > auc_month:
+                            try:
+                                db_data[field] = val.replace(month=auc_month)
+                            except Exception:
+                                pass
+
 
             # Clean up empty strings for numeric and datetime columns
             from sqlalchemy import String
@@ -416,20 +410,12 @@ class DatabaseService:
 
         return await self.auction_repository.create(auction)
 
-    # ==========================================================
-    # Get Upload
-    # ==========================================================
-
     async def get_upload(
         self,
         upload_id: str,
     ):
 
         return await self.upload_repository.get_by_id(upload_id)
-
-    # ==========================================================
-    # Get Auction
-    # ==========================================================
 
     async def get_auction(
         self,
@@ -438,17 +424,9 @@ class DatabaseService:
 
         return await self.auction_repository.get_by_id(auction_id)
 
-    # ==========================================================
-    # Get All Auctions
-    # ==========================================================
-
     async def get_all_auctions(self):
 
         return await self.auction_repository.get_all()
-
-    # ==========================================================
-    # Get Auctions By Upload
-    # ==========================================================
 
     async def get_auctions_by_upload(
         self,
@@ -472,10 +450,6 @@ class DatabaseService:
         if auction:
             await self.auction_repository.delete(auction)
 
-    # ==========================================================
-    # Statistics
-    # ==========================================================
-
     async def statistics(self) -> dict:
         """
         Database statistics.
@@ -489,10 +463,6 @@ class DatabaseService:
             "total_auctions": auctions,
             "database_connected": await self.is_ready(),
         }
-
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     async def health_check(self) -> dict:
         """

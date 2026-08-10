@@ -20,7 +20,6 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".tiff", ".bmp"}
 ALLOWED_PDF_EXTENSIONS = {".pdf"}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 
-
 class RequestValidationService:
     """
     Decoupled request validation separating file checks from Angular master selections.

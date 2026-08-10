@@ -15,10 +15,6 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
-# ==========================================================
-# Naming Convention
-# ==========================================================
-
 NAMING_CONVENTION = {
 
     "ix": "ix_%(column_0_label)s",
@@ -43,22 +39,12 @@ metadata = MetaData(
 
 )
 
-
-# ==========================================================
-# Base Model
-# ==========================================================
-
 class Base(DeclarativeBase):
     """
     Base class for all ORM models.
     """
 
     metadata = metadata
-
-
-# ==========================================================
-# Timestamp Mixin
-# ==========================================================
 
 class TimestampMixin:
     """
@@ -87,11 +73,6 @@ class TimestampMixin:
 
     )
 
-
-# ==========================================================
-# Soft Delete Mixin (Optional)
-# ==========================================================
-
 class SoftDeleteMixin:
     """
     Enables soft deletion.
@@ -104,11 +85,6 @@ class SoftDeleteMixin:
         nullable=False,
 
     )
-
-
-# ==========================================================
-# Audit Mixin
-# ==========================================================
 
 class AuditMixin(
     TimestampMixin,

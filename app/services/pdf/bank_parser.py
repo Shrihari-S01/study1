@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class BankParser:
     """
     Extracts payment bank account details from Seller Account / Beneficiary Details sections.

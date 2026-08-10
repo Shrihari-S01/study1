@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class LotBoundaryDetector:
     """
     Stage 6: Coordinate and structural landmark based Lot Boundary Detector.

@@ -38,7 +38,6 @@ router = APIRouter(
     tags=["Angular & PHP Integration"],
 )
 
-
 @router.post(
     "/process-document",
     response_model=DocumentProcessingResponse,
@@ -92,7 +91,6 @@ async def process_document(
             status_code=500,
             detail=f"AI Document Processing Error: {str(exc)}",
         )
-
 
 @router.post(
     "/submit-auction",

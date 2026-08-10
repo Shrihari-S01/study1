@@ -11,13 +11,11 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 def safe_print(msg: str):
     try:
         print(msg)
     except Exception:
         pass
-
 
 @dataclass
 class FieldHistory:
@@ -32,7 +30,6 @@ class FieldHistory:
     bbox: list[float] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
 
-
 @dataclass
 class FieldCandidate:
     """
@@ -45,7 +42,6 @@ class FieldCandidate:
     confidence: float
     source_text: str
     rejection_reason: str | None = None
-
 
 class FieldStateMachine:
     """
@@ -99,7 +95,6 @@ class FieldStateMachine:
         self.state = new_state
         if new_state == self.STORED:
             self.locked = True
-
 
 class PDFRetryEngine:
     """

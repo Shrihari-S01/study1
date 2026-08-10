@@ -12,7 +12,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class FieldMapper:
     """
     Maps OCR and LLM extracted fields
@@ -31,11 +30,6 @@ class FieldMapper:
         )
 
         self.mapping = self.build_mapping()
-
-
-    # ==========================================================
-    # Build Mapping
-    # ==========================================================
 
     def build_mapping(
         self,
@@ -106,8 +100,6 @@ class FieldMapper:
 
             "payment_type": "payment_type",
 
-
-
             "institution_seller_name": "institution_seller_name",
 
             "auction_office_department": "auction_office_department",
@@ -167,8 +159,6 @@ class FieldMapper:
             "auction_description": "auction_description",
 
             "increment_price": "increment_price",
-
-
 
             "assets_location": "assets_location",
 
@@ -232,10 +222,6 @@ class FieldMapper:
 
         }
 
-    # ==========================================================
-    # Empty Record
-    # ==========================================================
-
     def empty_record(
         self,
     ) -> dict:
@@ -253,9 +239,6 @@ class FieldMapper:
 
         }
     
-    # ==========================================================
-    # Supported Fields
-    # ==========================================================
 
     def supported_fields(
         self,
@@ -270,9 +253,6 @@ class FieldMapper:
 
         )
     
-    # ==========================================================
-    # Ready Check
-    # ==========================================================
 
     def is_ready(
         self,
@@ -283,10 +263,6 @@ class FieldMapper:
 
         return True
     
-
-    # ==========================================================
-    # Normalize Keys
-    # ==========================================================
 
     def normalize_keys(
         self,
@@ -321,11 +297,6 @@ class FieldMapper:
             normalized[new_key] = value
 
         return normalized
-
-
-    # ==========================================================
-    # Alias Mapping
-    # ==========================================================
 
     def alias_mapping(
         self,
@@ -397,10 +368,6 @@ class FieldMapper:
         }
     
 
-    # ==========================================================
-    # Apply Alias
-    # ==========================================================
-
     def apply_alias(
         self,
         data: dict,
@@ -429,11 +396,6 @@ class FieldMapper:
         return mapped
     
 
-
-    # ==========================================================
-    # Map Fields
-    # ==========================================================
-
     def map(
         self,
         data: dict,
@@ -447,24 +409,18 @@ class FieldMapper:
             "Mapping extracted fields."
         )
 
-        mapped = self.empty_record()
+        from app.services.extractor.canonical_normalizer import CanonicalAliasNormalizer
+        norm_data = CanonicalAliasNormalizer.normalize_record_aliases(data)
+
+        mapped = dict(norm_data)
 
         for source, target in self.mapping.items():
-
-            mapped[target] = data.get(
-
-                source,
-
-                "",
-
-            )
+            if source in norm_data and norm_data[source] not in ("", None):
+                mapped[target] = norm_data[source]
 
         return mapped
-    
 
-    # ==========================================================
-    # Apply Defaults
-    # ==========================================================
+    
 
     def apply_defaults(
         self,
@@ -485,10 +441,6 @@ class FieldMapper:
 
         return record
     
-
-    # ==========================================================
-    # Normalize Values
-    # ==========================================================
 
     def normalize_values(
         self,
@@ -519,11 +471,6 @@ class FieldMapper:
             normalized[key] = value
 
         return normalized
-
-
-    # ==========================================================
-    # Process Mapping
-    # ==========================================================
 
     def process(
         self,
@@ -559,12 +506,6 @@ class FieldMapper:
 
         return data
 
-
-
-    # ==========================================================
-    # Merge Records
-    # ==========================================================
-
     def merge(
         self,
         primary: dict,
@@ -592,10 +533,6 @@ class FieldMapper:
 
         return merged
     
-
-    # ==========================================================
-    # Missing Fields
-    # ==========================================================
 
     def missing_fields(
         self,
@@ -625,10 +562,6 @@ class FieldMapper:
 
         return missing 
     
-
-    # ==========================================================
-    # Available Fields
-    # ==========================================================
 
     def available_fields(
         self,
@@ -660,10 +593,6 @@ class FieldMapper:
         return available
     
 
-    # ==========================================================
-    # Completion Percentage
-    # ==========================================================
-
     def completion_percentage(
         self,
         data: dict,
@@ -694,10 +623,6 @@ class FieldMapper:
 
         )
     
-
-    # ==========================================================
-    # Statistics
-    # ==========================================================
 
     def statistics(
         self,
@@ -738,11 +663,6 @@ class FieldMapper:
         }
     
 
-
-    # ==========================================================
-    # Mapping Score
-    # ==========================================================
-
     def score(
         self,
         data: dict,
@@ -763,10 +683,6 @@ class FieldMapper:
         )
     
 
-    # ==========================================================
-    # Validate Mapping
-    # ==========================================================
-
     def validate_mapping(
         self,
         data: dict,
@@ -786,10 +702,6 @@ class FieldMapper:
 
         )
     
-
-    # ==========================================================
-    # Summary
-    # ==========================================================
 
     def summary(
         self,
@@ -819,10 +731,6 @@ class FieldMapper:
 
         }
 
-    # ==========================================================
-    # Version
-    # ==========================================================
-
     def version(
         self,
     ) -> dict:
@@ -844,9 +752,6 @@ class FieldMapper:
 
         }
     
-    # ==========================================================
-    # Reset
-    # ==========================================================
 
     def reset(
         self,
@@ -861,9 +766,6 @@ class FieldMapper:
 
         return self.empty_record()
     
-    # ==========================================================
-    # Health Check
-    # ==========================================================
 
     def health_check(
         self,
@@ -888,9 +790,6 @@ class FieldMapper:
 
         }
     
-    # ==========================================================
-    # Complete Pipeline
-    # ==========================================================
 
     def pipeline(
         self,

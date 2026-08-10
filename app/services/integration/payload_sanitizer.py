@@ -17,7 +17,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 def sanitize_varchar_field(value: Any) -> str:
     r"""
     Sanitize a single VARCHAR/TEXT field specifically for PHP database insertion:
@@ -50,13 +49,11 @@ def sanitize_varchar_field(value: Any) -> str:
     s = re.sub(r"\s+", " ", s)
     return s.strip()
 
-
 def sanitize_string_field(value: Any) -> str:
     """
     Sanitize a single text string using sanitize_varchar_field.
     """
     return sanitize_varchar_field(value)
-
 
 def sanitize_json_payload(data: Any) -> Any:
     """
@@ -73,7 +70,6 @@ def sanitize_json_payload(data: Any) -> Any:
     if isinstance(data, (int, float, bool)):
         return data
     return sanitize_varchar_field(str(data))
-
 
 class PHPSanitizer:
     r"""
@@ -198,7 +194,6 @@ class PHPSanitizer:
         """
         sanitized_payload, _, _ = cls.sanitize_and_validate_payload(payload, processing_id=processing_id)
         return sanitized_payload
-
 
 def validate_and_serialize_json_payload(payload: Dict[str, Any], processing_id: str = "N/A") -> Tuple[Dict[str, Any], str]:
     """

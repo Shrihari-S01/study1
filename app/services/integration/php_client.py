@@ -18,7 +18,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class PHPIntegrationClient:
     """
     HTTP Client with smart retry policy distinguishing 5xx retriable errors from 4xx non-retriable errors.

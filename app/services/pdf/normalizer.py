@@ -8,7 +8,6 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-
 class Normalizer:
     """
     Stage 9: Normalization Engine for PDF data fields.

@@ -21,7 +21,6 @@ from app.services.llm.gemini_service import GeminiService
 logger = get_logger(__name__)
 settings = get_settings()
 
-
 class LLMService:
     """
     Unified LLM wrapper supporting multiple providers (Gemini and OpenAI).
@@ -75,10 +74,6 @@ class LLMService:
                 f"Runtime Assertion Violation: Cannot execute {target_provider.upper()} logic because LLM_PROVIDER is configured as '{self.provider}'."
             )
 
-    # ==========================================================
-    # Ready Check
-    # ==========================================================
-
     def is_ready(
         self,
     ) -> bool:
@@ -88,10 +83,6 @@ class LLMService:
         if self.provider == "openai":
             return bool(self.openai_key)
         return self.gemini.is_ready()
-
-    # ==========================================================
-    # Model Information
-    # ==========================================================
 
     def model_info(
         self,
@@ -107,10 +98,6 @@ class LLMService:
                 "max_tokens": self.max_tokens,
             }
         return self.gemini.model_info()
-
-    # ==========================================================
-    # Supported Fields & Schema
-    # ==========================================================
 
     def supported_fields(
         self,
@@ -155,10 +142,6 @@ class LLMService:
         JSON schema as formatted text.
         """
         return json.dumps(self.empty_record(), indent=4)
-
-    # ==========================================================
-    # Text Completion (Fast Path for High-Confidence OCR)
-    # ==========================================================
 
     def text_completion(
         self,
@@ -251,21 +234,32 @@ class LLMService:
 
     @staticmethod
     def _get_cached_response(cache_key: str) -> str | None:
-        """Read response from persistent disk cache."""
+        """Read response from persistent disk cache if enabled."""
+        if not getattr(settings, "enable_disk_cache", False):
+            return None
         try:
             cache_dir = os.path.join(os.getcwd(), "temp", "cache")
             os.makedirs(cache_dir, exist_ok=True)
             cache_file = os.path.join(cache_dir, f"{cache_key}.json")
             if os.path.exists(cache_file):
                 with open(cache_file, "r", encoding="utf-8") as f:
-                    return f.read()
+                    content = f.read()
+                    if content and len(content.strip()) > 10:
+                        try:
+                            data = json.loads(content)
+                            if isinstance(data, dict) and (data.get("auctions") or data.get("reserve_price") or data.get("borrower_name")):
+                                return content
+                        except Exception:
+                            pass
         except Exception:
             pass
         return None
 
     @staticmethod
     def _set_cached_response(cache_key: str, content: str) -> None:
-        """Write response to persistent disk cache."""
+        """Write response to persistent disk cache if enabled."""
+        if not getattr(settings, "enable_disk_cache", False):
+            return
         try:
             cache_dir = os.path.join(os.getcwd(), "temp", "cache")
             os.makedirs(cache_dir, exist_ok=True)
@@ -274,10 +268,6 @@ class LLMService:
                 f.write(content)
         except Exception:
             pass
-
-    # ==========================================================
-    # Vision Completion (Direct Scrape)
-    # ==========================================================
 
     def vision_completion(
         self,
@@ -571,10 +561,6 @@ class LLMService:
             return self.extract(pdf_text)
         return self.gemini.extract_pdf_catalogue(pdf_text)
 
-    # ==========================================================
-    # Text-Based Extraction
-    # ==========================================================
-
     def extract(
         self,
         text: str,
@@ -638,10 +624,6 @@ class LLMService:
                 raise RuntimeError(f"OpenAI Parse Error : {exc}") from exc
 
         return self.gemini.extract(text)
-
-    # ==========================================================
-    # Parse JSON
-    # ==========================================================
 
     def parse_json(
         self,
