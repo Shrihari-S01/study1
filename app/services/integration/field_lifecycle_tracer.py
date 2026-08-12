@@ -69,18 +69,19 @@ class FieldLifecycleTracer:
             return loss_records
 
         PHP_KEY_MAP = {
-            "reserve_price": "reserver_price",
+            "auction_number": "p_auction_number",
+            "reserve_price": "p_reserver_price",
             "auction_start_datetime": "auction_date",
             "auction_date": "auction_date",
             "institution_seller": "institution_seller",
-            "product_location": "product_location",
+            "product_location": "p_product_location",
             "authorized_officer_number": "authorized_officer_no",
         }
 
         for field_name in cls.TRACE_FIELDS:
             php_key = PHP_KEY_MAP.get(field_name, field_name)
-            prev_v = str(previous_dict.get(field_name) or previous_dict.get(php_key) or "").strip()
-            curr_v = str(current_dict.get(field_name) or current_dict.get(php_key) or "").strip()
+            prev_v = str(previous_dict.get(field_name) or previous_dict.get(php_key) or previous_dict.get(f"p_{field_name}") or "").strip()
+            curr_v = str(current_dict.get(field_name) or current_dict.get(php_key) or current_dict.get(f"p_{field_name}") or "").strip()
 
             is_prev_valid = bool(prev_v) and prev_v.lower() not in {"null", "none", "undefined", "0", "0.0", "0.00"}
             is_curr_invalid = (not curr_v) or curr_v.lower() in {"null", "none", "undefined", "0", "0.0", "0.00"}

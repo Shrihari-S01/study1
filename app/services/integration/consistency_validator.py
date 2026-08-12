@@ -362,9 +362,9 @@ class MappingConsistencyValidator:
     """
 
     CRITICAL_FIELDS = {
-        "auction_number": "auction_number",
+        "auction_number": "p_auction_number",
         "auction_start_datetime": "auction_date",
-        "reserve_price": "reserver_price",
+        "reserve_price": "p_reserver_price",
         "seller_name": "institution_seller",
         "asset_location": "product_location",
     }
@@ -419,22 +419,40 @@ class MappingConsistencyValidator:
 
         for ai_key, php_key, severity in all_field_pairs:
             canonical_val = str(common_schema.get(ai_key) or norm_schema.get(ai_key) or "").strip()
-            mapped_val = str(php_payload.get(php_key) or "").strip()
+            mapped_val = str(
+                php_payload.get(php_key) or
+                php_payload.get(f"p_{php_key}") or
+                php_payload.get(ai_key) or
+                php_payload.get(f"p_{ai_key}") or
+                ""
+            ).strip()
 
-            # Empty critical fields are CRITICAL_ERROR
+            # Empty critical fields check: Enforce lineage source presence check
             if not mapped_val and severity == "CRITICAL":
-                status = "CRITICAL_ERROR"
-                critical_errors += 1
+                # Check lineage in common_schema / raw extraction
+                was_present_in_source = bool(
+                    common_schema.get(ai_key)
+                    or common_schema.get(php_key)
+                    or norm_schema.get(ai_key)
+                    or norm_schema.get(php_key)
+                )
+                if canonical_val or was_present_in_source:
+                    status = "CRITICAL_ERROR"
+                    critical_errors += 1
+                    detail_msg = "FIELD LOSS DETECTED: Critical field present in OCR/canonical schema but missing in mapped payload."
+                else:
+                    status = "MATCH"
+                    detail_msg = "Critical field absent in both canonical and mapped payload; match ok."
                 field_results.append(
                     FieldConsistencyResult(
                         field=php_key,
                         severity=severity,
                         confidence=confidence_score,
-                        canonical_value=canonical_val,
+                        canonical_value="",
                         mapped_value="",
                         transformation="Mandatory schema check",
                         status=status,
-                        detail="Critical field missing/empty in mapped payload.",
+                        detail=detail_msg,
                     )
                 )
                 continue

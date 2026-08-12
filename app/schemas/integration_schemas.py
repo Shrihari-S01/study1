@@ -31,6 +31,8 @@ class DocumentProcessingResponse(BaseModel):
         default_factory=list,
         description="Extracted auction record dictionaries ready for UI review",
     )
+    processing_status: str = Field(default="SUCCESS", description="Detailed processing status (SUCCESS or FAILED)")
+    error_detail: str = Field(default="", description="Detailed error description when extraction/validation fails")
     message: str = Field(..., description="Human-readable status summary message")
 
 class AuctionSubmissionRequest(BaseModel):

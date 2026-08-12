@@ -78,6 +78,8 @@ def format_date_to_dmy(val, include_time=False):
     if val in (None, ""):
         return None
     s_val = str(val).strip()
+    if not s_val or s_val.startswith("0000") or s_val.lower() in {"null", "none", "n/a", "undefined"}:
+        return None
     try:
         if isinstance(val, (datetime, date)):
             dt = val
@@ -99,7 +101,7 @@ def format_date_to_dmy(val, include_time=False):
                 return dt.strftime("%d-%m-%Y")
             except Exception:
                 return m.group(0)
-        return s_val
+        return s_val if not s_val.startswith("0000") else None
 
 def clean_numeric(val):
     if val in (None, ""):
@@ -185,8 +187,8 @@ def build_pipeline_response(result: dict) -> dict:
             schema_fields = PROPERTY_FIELDS
             schema_name = "PROPERTY_SCHEMA"
         else:
-            schema_fields = SCRAP_FIELDS
-            schema_name = "SCRAP_SCHEMA"
+            schema_fields = PROPERTY_FIELDS
+            schema_name = "PROPERTY_SCHEMA"
 
         # Step 4: Log category schema selection
         import sys
@@ -227,15 +229,105 @@ def build_pipeline_response(result: dict) -> dict:
         record_dict["asset_category"] = category or None
 
         # Sanitize auction_no: Never allow Seller Name to populate auction_no
-        raw_auc_no = str(db_dict.get("auction_no") or common_extract.get("auction_number") or "").strip()
+        raw_auc_no = str(db_dict.get("auction_no") or common_extract.get("auction_number") or db_dict.get("auction_number") or db_dict.get("p_auction_number") or "").strip()
         seller_str = str(db_dict.get("institution_seller") or common_extract.get("seller_name") or "").strip()
         if raw_auc_no and (len(raw_auc_no) > 15 or (seller_str and raw_auc_no.lower() in seller_str.lower())):
-            record_dict["auction_no"] = str(db_dict.get("lot_no") or "1")
+            record_dict["auction_no"] = str(db_dict.get("lot_no") or str(idx + 1).zfill(2))
         else:
-            record_dict["auction_no"] = raw_auc_no or str(db_dict.get("lot_no") or "") or None
+            record_dict["auction_no"] = raw_auc_no or str(db_dict.get("lot_no") or "") or str(idx + 1).zfill(2)
 
-        record_dict["auction_description"] = db_dict.get("auction_description") or common_extract.get("description") or None
-        record_dict["assets_location"] = db_dict.get("assets_location") or db_dict.get("property_address") or common_extract.get("asset_location") or None
+        raw_desc = db_dict.get("auction_description") or common_extract.get("description") or None
+        if isinstance(raw_desc, list):
+            items_str = []
+            for itm in raw_desc:
+                if isinstance(itm, dict):
+                    parts = []
+                    name_part = itm.get("item") or itm.get("item_description") or itm.get("description") or itm.get("property_description")
+                    if name_part:
+                        parts.append(str(name_part))
+                    if itm.get("make"):
+                        parts.append(f"Make {itm['make']}")
+                    if itm.get("model"):
+                        parts.append(f"Model {itm['model']}")
+                    if itm.get("capacity"):
+                        parts.append(f"Capacity {itm['capacity']}")
+                    if itm.get("year_of_manufacturing"):
+                        parts.append(f"manufactured in {itm['year_of_manufacturing']}")
+                    if parts:
+                        items_str.append(", ".join(parts))
+                elif isinstance(itm, str):
+                    items_str.append(itm)
+            record_dict["auction_description"] = ". ".join(items_str) if items_str else None
+        elif isinstance(raw_desc, dict):
+            parts = []
+            name_part = raw_desc.get("item") or raw_desc.get("item_description") or raw_desc.get("description") or raw_desc.get("property_description")
+            if name_part:
+                parts.append(str(name_part))
+            if raw_desc.get("make"):
+                parts.append(f"Make {raw_desc['make']}")
+            if raw_desc.get("model"):
+                parts.append(f"Model {raw_desc['model']}")
+            if raw_desc.get("capacity"):
+                parts.append(f"Capacity {raw_desc['capacity']}")
+            if raw_desc.get("year_of_manufacturing"):
+                parts.append(f"manufactured in {raw_desc['year_of_manufacturing']}")
+            if not parts:
+                parts = [f"{k} {v}" for k, v in raw_desc.items() if v and k not in {"value_in_inr", "total_value_in_inr"}]
+            record_dict["auction_description"] = ", ".join(parts) if parts else None
+        else:
+            record_dict["auction_description"] = str(raw_desc) if raw_desc else None
+
+        # Hard Sanitizer: Stage 6 Canonical Location Reconciliation
+        def clean_location_str(val):
+            if not val:
+                return None
+            v_str = str(val).strip()
+            if v_str.startswith("[") or v_str.startswith("{"):
+                try:
+                    import json
+                    parsed = json.loads(v_str)
+                    return normalize_location_obj(parsed)
+                except Exception:
+                    return None
+            forbidden = [
+                "property_no:", "description:", "area_hectares:", "value_in_inr:",
+                "quantity:", "model:", "year_of_manufacturing:", "make:", "item:"
+            ]
+            lower_v = v_str.lower()
+            if any(x in lower_v for x in forbidden):
+                return None
+            import re
+            v_str = re.sub(r"(?i)^(location|place|situated\s+at|located\s+at)\s*[:\-]\s*", "", v_str).strip()
+            v_str = v_str.strip("[]{}() ")
+            return v_str or None
+
+        def normalize_location_obj(val):
+            if val is None:
+                return None
+            if isinstance(val, dict):
+                loc = val.get("location") or val.get("address") or val.get("asset_location") or val.get("product_location")
+                return clean_location_str(loc)
+            if isinstance(val, list):
+                locs = []
+                for item in val:
+                    if isinstance(item, dict):
+                        loc = item.get("location") or item.get("address") or item.get("asset_location") or item.get("product_location")
+                        if loc:
+                            locs.append(str(loc).strip())
+                    elif isinstance(item, str):
+                        locs.append(item.strip())
+                cleaned = []
+                for x in locs:
+                    cx = clean_location_str(x)
+                    if cx and cx not in cleaned:
+                        cleaned.append(cx)
+                return "; ".join(cleaned) if cleaned else None
+            if isinstance(val, str):
+                return clean_location_str(val)
+            return None
+
+        raw_loc = db_dict.get("assets_location") or db_dict.get("location") or common_extract.get("asset_location") or None
+        record_dict["assets_location"] = normalize_location_obj(raw_loc)
 
         # Notice bank details and branch office department mapping
         bank_val = db_dict.get("institution_seller") or common_extract.get("seller_name") or None
@@ -266,17 +358,33 @@ def build_pipeline_response(result: dict) -> dict:
         if "emd_ifsc" in record_dict:
             record_dict["emd_ifsc"] = emd_ifsc_val or None
 
-        # Numeric price conversions (preserve extracted values without forcing to None)
-        reserve_val = clean_numeric(db_dict.get("reserve_price") or db_dict.get("starting_price") or common_extract.get("reserve_price"))
-        record_dict["starting_price"] = reserve_val
-        record_dict["reserve_price"] = reserve_val
+        # Numeric price conversions & Authoritative Reserve Price Alias Propagation
+        raw_reserve = db_dict.get("reserve_price") or db_dict.get("reserver_price") or db_dict.get("p_reserver_price") or common_extract.get("reserve_price")
+        raw_starting = db_dict.get("starting_price") or db_dict.get("auction_start_price") or common_extract.get("starting_price")
+
+        clean_reserve = clean_numeric(raw_reserve)
+        clean_starting = clean_numeric(raw_starting)
+
+        final_price = None
+        if clean_reserve not in (None, "", 0, 0.0):
+            final_price = clean_reserve
+        elif clean_starting not in (None, "", 0, 0.0):
+            final_price = clean_starting
+
+        record_dict["starting_price"] = final_price
+        record_dict["reserve_price"] = final_price
+        record_dict["reserver_price"] = final_price
+        record_dict["p_reserver_price"] = final_price
+        record_dict["auction_start_price"] = final_price
 
         emd_val = clean_numeric(db_dict.get("emd_price") or db_dict.get("emd_amount") or common_extract.get("emd_amount"))
         record_dict["pre_bid_emd"] = emd_val
         record_dict["emd_price"] = emd_val
+        record_dict["emd_amount"] = emd_val
 
         inc_val = clean_numeric(db_dict.get("increment_price") or db_dict.get("bid_increment") or common_extract.get("increment_price"))
         record_dict["increment_price"] = inc_val
+        record_dict["bid_increment"] = inc_val
 
         record_dict["currency"] = db_dict.get("currency") or common_extract.get("currency") or "INR"
 
@@ -296,8 +404,14 @@ def build_pipeline_response(result: dict) -> dict:
         record_dict["inspection_schedule_to_date"] = format_date_to_dmy(db_dict.get("inspection_to_date") or common_extract.get("inspection_to_date"), include_time=True)
         record_dict["catalogue_view_date"] = format_date_to_dmy(db_dict.get("catalogue_view_date") or common_extract.get("catalogue_view_date"))
 
-        record_dict["auction_date_time"] = format_date_to_dmy(db_dict.get("auction_start_datetime") or common_extract.get("auction_start_datetime"), include_time=True)
-        record_dict["auction_end_date_time"] = format_date_to_dmy(db_dict.get("auction_end_datetime") or common_extract.get("auction_end_datetime"), include_time=True)
+        record_dict["auction_date_time"] = format_date_to_dmy(
+            db_dict.get("auction_start_datetime") or db_dict.get("auction_date_time") or common_extract.get("auction_start_datetime") or common_extract.get("auction_date_time"),
+            include_time=True
+        )
+        record_dict["auction_end_date_time"] = format_date_to_dmy(
+            db_dict.get("auction_end_datetime") or db_dict.get("auction_end_date_time") or common_extract.get("auction_end_datetime") or common_extract.get("auction_end_date_time"),
+            include_time=True
+        )
         record_dict["submit_application"] = format_date_to_dmy(db_dict.get("submit_application") or common_extract.get("submit_application"), include_time=True)
         record_dict["repo_date"] = format_date_to_dmy(db_dict.get("repo_date"))
 

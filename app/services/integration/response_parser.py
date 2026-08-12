@@ -27,10 +27,16 @@ MYSQL_ERROR_KEYWORDS = [
     "foreign key constraint",
     "mysql",
     "syntax error",
+    "sql syntax error",
     "column cannot be null",
+    "cannot be null",
+    "incorrect decimal value",
     "incorrect integer value",
     "incorrect double value",
     "incorrect date",
+    "out of range",
+    "database error",
+    "constraint violation",
     "truncated",
 ]
 
@@ -62,17 +68,32 @@ class PHPResponseParser:
         # Default extraction helpers
         def extract_msg() -> str:
             if isinstance(raw_json, dict):
-                return str(raw_json.get("message") or raw_json.get("msg") or raw_json.get("detail") or raw_json.get("data") or "")
+                return str(raw_json.get("message") or raw_json.get("msg") or raw_json.get("detail") or raw_json.get("error") or "")
             return ""
 
         def extract_id() -> str:
             if isinstance(raw_json, dict):
-                val = raw_json.get("id") or raw_json.get("auction_id") or raw_json.get("record_id") or raw_json.get("insert_id")
-                return str(val) if val else ""
+                # 1. Top level
+                val = raw_json.get("id") or raw_json.get("auction_id") or raw_json.get("record_id") or raw_json.get("insert_id") or raw_json.get("last_insert_id")
+                if val:
+                    return str(val).strip()
+                # 2. Nested under 'data' dict
+                data_obj = raw_json.get("data")
+                if isinstance(data_obj, dict):
+                    d_val = data_obj.get("id") or data_obj.get("auction_id") or data_obj.get("record_id") or data_obj.get("insert_id") or data_obj.get("last_insert_id")
+                    if d_val:
+                        return str(d_val).strip()
+                elif data_obj and not isinstance(data_obj, (dict, list)):
+                    d_str = str(data_obj).strip()
+                    if d_str.isdigit() or len(d_str) > 0:
+                        return d_str
             return ""
 
         msg = extract_msg() or error_detail or "No message returned by PHP API."
         record_id = extract_id()
+
+        if not record_id:
+            logger.info("php_record_id_unavailable = True (PHP API response body does not supply an explicit record ID key)")
 
         # Construct full response text for keyword checking
         data_field_str = str(raw_json.get("data") or "") if isinstance(raw_json, dict) else ""
@@ -86,8 +107,8 @@ class PHPResponseParser:
                 return ParsedPHPResponse(
                     success=False,
                     status_category="DATABASE_ERROR",
-                    record_id=record_id,
-                    message=db_err_msg,
+                    record_id="",
+                    message=f"Database Insertion Error: {db_err_msg}",
                     raw_payload=raw_json if isinstance(raw_json, dict) else {"raw": str(raw_json)},
                 )
 
@@ -98,13 +119,23 @@ class PHPResponseParser:
             if isinstance(raw_json, dict):
                 status_flag = raw_json.get("status")
                 success_flag = raw_json.get("success")
+                code_flag = raw_json.get("code")
 
-                if status_flag is False or success_flag is False or str(status_flag).lower() in {"false", "0", "error", "failed"}:
+                # If status or success flags explicitly indicate failure/error
+                is_explicit_failure = (
+                    status_flag is False or
+                    success_flag is False or
+                    str(status_flag).lower() in {"false", "0", "error", "failed", "failure"} or
+                    str(success_flag).lower() in {"false", "0", "error", "failed"} or
+                    (code_flag is not None and str(code_flag) not in {"200", "201", "0"})
+                )
+
+                if is_explicit_failure:
                     if "duplicate" in msg_lower or "already exist" in msg_lower:
                         return ParsedPHPResponse(
                             success=False,
                             status_category="DUPLICATE",
-                            record_id=record_id,
+                            record_id="",
                             message=f"Duplicate Record: {msg}",
                             raw_payload=raw_json,
                         )
@@ -112,8 +143,8 @@ class PHPResponseParser:
                         return ParsedPHPResponse(
                             success=False,
                             status_category="VALIDATION_ERROR",
-                            record_id=record_id,
-                            message=f"PHP Insert Failed: {msg}",
+                            record_id="",
+                            message=f"PHP Insertion Rejected: {msg}",
                             raw_payload=raw_json,
                         )
 
@@ -130,7 +161,7 @@ class PHPResponseParser:
             return ParsedPHPResponse(
                 success=False,
                 status_category="DUPLICATE",
-                record_id=record_id,
+                record_id="",
                 message=f"Duplicate Record: {msg}",
                 raw_payload=raw_json if isinstance(raw_json, dict) else {},
             )
@@ -140,7 +171,7 @@ class PHPResponseParser:
             return ParsedPHPResponse(
                 success=False,
                 status_category="VALIDATION_ERROR",
-                record_id=record_id,
+                record_id="",
                 message=f"PHP Validation Error: {msg}",
                 raw_payload=raw_json if isinstance(raw_json, dict) else {},
             )
@@ -149,7 +180,7 @@ class PHPResponseParser:
         return ParsedPHPResponse(
             success=False,
             status_category="SERVER_ERROR",
-            record_id=record_id,
+            record_id="",
             message=f"PHP Server Error: {msg}",
             raw_payload=raw_json if isinstance(raw_json, dict) else {},
         )

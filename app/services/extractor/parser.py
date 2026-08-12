@@ -1499,18 +1499,82 @@ class AuctionParser:
             text,
         )
 
-        common = {}
-        for group_key in [
-            "common_fields",
-            "event_and_institution_details",
-            "auction_mechanics_and_dates",
-            "emd_and_payment_details",
-            "portal_specific_fields"
-        ]:
-            if group_key in llm_result and isinstance(llm_result[group_key], dict):
-                common.update(llm_result[group_key])
-        
-        llm_auctions = llm_result.get("auctions", [])
+        # Extract notice-level shared metadata across full notice text
+        notice_shared = self.extract_shared_metadata(raw_text, global_ocr_text=global_text)
+
+        # Detect structural lot section blocks in OCR text
+        ocr_blocks = self.detect_ocr_auction_blocks(raw_text)
+        if len(ocr_blocks) <= 1:
+            ocr_blocks = self.split_ocr_text_into_lots(raw_text)
+
+        llm_auctions = []
+        if len(ocr_blocks) > 1:
+            logger.info("Multi-lot OCR section segmentation active: %d blocks detected.", len(ocr_blocks))
+            chunk_records = []
+            for b_idx, block in enumerate(ocr_blocks, start=1):
+                logger.info("==================================================")
+                logger.info("IMAGE ROW %d | OCR BLOCK TEXT LENGTH: %d", b_idx, len(block))
+                logger.info("BLOCK SAMPLE TEXT: %r", block[:300])
+                logger.info("==================================================")
+                block_res = self.llm_extract(block)
+                b_auctions = block_res.get("auctions", []) if isinstance(block_res, dict) else []
+                if not b_auctions and isinstance(block_res, dict):
+                    b_auctions = [block_res]
+                for b_auc in b_auctions:
+                    if isinstance(b_auc, dict):
+                        if not b_auc.get("auction_number") and not b_auc.get("auction_no"):
+                            b_auc["auction_number"] = str(b_idx).zfill(2)
+                        for shared_k, shared_v in notice_shared.items():
+                            if shared_v and not b_auc.get(shared_k):
+                                b_auc[shared_k] = shared_v
+                        chunk_records.append(b_auc)
+            if chunk_records:
+                llm_auctions = chunk_records
+
+        if not llm_auctions:
+            llm_auctions = llm_result.get("auctions", []) if isinstance(llm_result, dict) else []
+            if not isinstance(llm_auctions, list):
+                llm_auctions = []
+
+            # If LLM returned 1 merged record containing a list of top-level lots (e.g. Plant & Machinery lot vs Land & Building lot), split into top-level lot records ONLY
+            if len(llm_auctions) == 1 and isinstance(llm_auctions[0], dict):
+                merged_rec = llm_auctions[0]
+                desc_val = merged_rec.get("auction_description") or merged_rec.get("description")
+                if isinstance(desc_val, list) and len(desc_val) > 1:
+                    # Check if elements in desc_val represent separate top-level lots (e.g., has 'property_description' or separate lot numbers)
+                    is_lot_list = any(isinstance(x, dict) and (x.get("property_description") or x.get("lot_no") or x.get("property_no")) for x in desc_val)
+                    if is_lot_list:
+                        split_recs = []
+                        for s_idx, item_group in enumerate(desc_val, start=1):
+                            new_rec = dict(merged_rec)
+                            new_rec["auction_number"] = str(s_idx).zfill(2)
+                            new_rec["auction_description"] = item_group
+                            new_rec["description"] = item_group
+                            if isinstance(item_group, dict):
+                                if item_group.get("total_value_in_inr"):
+                                    new_rec["reserve_price"] = item_group.get("total_value_in_inr")
+                                if item_group.get("address"):
+                                    new_rec["property_address"] = str(item_group.get("address"))
+                                elif item_group.get("location"):
+                                    new_rec["property_address"] = str(item_group.get("location"))
+                            split_recs.append(new_rec)
+                        if split_recs:
+                            llm_auctions = split_recs
+
+        # COMPLETENESS CHECK: Verify detected lot section count vs extracted auction count
+        det_count = max(len(ocr_blocks), 1)
+        ext_count = len(llm_auctions)
+        if det_count > ext_count:
+            logger.error(
+                "CRITICAL EXTRACTION LOSS | Detected auctions: %d | Extracted auctions: %d | Missing auctions: %d",
+                det_count, ext_count, det_count - ext_count
+            )
+        else:
+            logger.info(
+                "EXTRACTION COMPLETENESS CHECK PASSED | Detected auctions: %d | Extracted auctions: %d",
+                det_count, ext_count
+            )
+
         if not llm_auctions:
             # Gemini is offline/rate-limited. Run multi-lot regex parser fallback on raw text!
             chunks = self.split_ocr_text_into_lots(raw_text)
@@ -1570,6 +1634,50 @@ class AuctionParser:
             # Fill missing
             flat_auc = self.fill_missing(flat_auc)
 
+            # Ensure notice_shared metadata (auction dates, times, header info) is propagated to flat_auc
+            for ns_k, ns_v in notice_shared.items():
+                if ns_v and (not flat_auc.get(ns_k) or flat_auc.get(ns_k) in ("00:00", "00:00:00", "0000-00-00 00:00:00")):
+                    flat_auc[ns_k] = ns_v
+
+            # IMAGE POST-EXTRACTION RECONCILER: Deterministic field preservation
+            # 1. Price reconciliation: Reserve Price is authoritative
+            raw_r = flat_auc.get("reserve_price") or flat_auc.get("reserver_price") or flat_auc.get("p_reserver_price") or llm_auc.get("reserve_price") or llm_auc.get("starting_price")
+            raw_s = flat_auc.get("starting_price") or flat_auc.get("auction_start_price") or llm_auc.get("starting_price")
+            if raw_r not in (None, "", 0, "0", 0.0, "0.0"):
+                flat_auc["reserve_price"] = raw_r
+                flat_auc["starting_price"] = raw_r
+                flat_auc["reserver_price"] = raw_r
+                flat_auc["p_reserver_price"] = raw_r
+                flat_auc["auction_start_price"] = raw_r
+            elif raw_s not in (None, "", 0, "0", 0.0, "0.0"):
+                flat_auc["reserve_price"] = raw_s
+                flat_auc["starting_price"] = raw_s
+                flat_auc["reserver_price"] = raw_s
+                flat_auc["p_reserver_price"] = raw_s
+                flat_auc["auction_start_price"] = raw_s
+
+            # 2. Datetime reconciliation: Ensure start and end datetimes take precedence over midnight fallbacks
+            if notice_shared.get("auction_start_datetime"):
+                flat_auc["auction_start_datetime"] = notice_shared["auction_start_datetime"]
+                flat_auc["auction_start_date"] = notice_shared["auction_start_datetime"]
+                flat_auc["auction_date_time"] = notice_shared["auction_start_datetime"]
+                flat_auc["start_date"] = notice_shared["auction_start_datetime"]
+
+            if notice_shared.get("auction_end_datetime"):
+                flat_auc["auction_end_datetime"] = notice_shared["auction_end_datetime"]
+                flat_auc["auction_end_date"] = notice_shared["auction_end_datetime"]
+                flat_auc["auction_end_date_time"] = notice_shared["auction_end_datetime"]
+                flat_auc["end_date"] = notice_shared["auction_end_datetime"]
+
+            if notice_shared.get("auction_time"):
+                flat_auc["auction_time"] = notice_shared["auction_time"]
+
+            if notice_shared.get("auction_end_time"):
+                flat_auc["auction_end_time"] = notice_shared["auction_end_time"]
+
+            if notice_shared.get("catalogue_view_date"):
+                flat_auc["catalogue_view_date"] = notice_shared["catalogue_view_date"]
+
             # Map fields to DB attributes
             mapped_auc = self.map_fields(flat_auc)
 
@@ -1613,12 +1721,16 @@ class AuctionParser:
         if not text:
             return []
 
-        # Strictly match auction lot serial headers like Sl.No.1, SI.No.2, S.No.3, Lot 4, Item 5
+        # Top-level table lot row markers: Sl No 1 / Sl. No. 01 / 1. / 2.
         pattern = r'(?i)(?:^|\n)\s*(?<!Survey\s)(?<!Patta\s)(?<!Village\s)(?<!T\.S\.\s)(?<!Sub\sDivision\s)(?:Sl\s*\.?\s*No\.?|SI\s*\.?\s*No\.?|S\s*\.?\s*No\.?|Lot\s+No\.?|Item\s+No\.?)\s*[:.-]?\s*(\d+[a-z]?)'
         matches = list(re.finditer(pattern, text))
 
         if not matches:
-            pattern = r'(?i)\b(?:Sl\s*\.?\s*No\.?|SI\s*\.?\s*No\.?)\s*[:.-]?\s*(\d+[a-z]?)'
+            pattern = r'(?i)\b(?:Sl\s*\.?\s*No\.?|SI\s*\.?\s*No\.?|S\s*\.?\s*No\.?)\s*[:.-]?\s*(\d+[a-z]?)'
+            matches = list(re.finditer(pattern, text))
+
+        if not matches:
+            pattern = r'(?m)^\s*([1-9]\d?)\s*[\.\)]\s+'
             matches = list(re.finditer(pattern, text))
 
         if not matches:
@@ -1705,21 +1817,14 @@ class AuctionParser:
         if not combined.strip():
             return shared
 
-        # 1. Stage 5: Catalogue View Date (Four-corner / header / footer search)
-        date_patterns = [
-            r'(?i)(?:Catalogue\s+View\s+Date|View\s+Date|Catalogue\s+Date|Download\s+Date|Notice\s+Date)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})',
-            r'(?i)(?<!Auction\s)(?<!Inspection\s)(?<!EMD\s)(?<!Demand\s)(?<!Notice\s)(?<!Possession\s)(?:Date|DATE|Dated|DATED)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})'
-        ]
-
-        cat_date = None
-        for pat in date_patterns:
-            m = re.search(pat, combined)
-            if m:
-                cat_date = m.group(1).strip().replace(".", "-").replace("/", "-")
-                break
-
-        if cat_date:
-            shared["catalogue_view_date"] = cat_date
+        # 1. Stage 5: Catalogue View Date vs Footer Document Date
+        cat_m = re.search(r'(?i)(?:Catalogue\s+View\s+Date|View\s+Date|Catalogue\s+Date)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})', combined)
+        if cat_m:
+            shared["catalogue_view_date"] = cat_m.group(1).strip().replace(".", "-").replace("/", "-")
+        else:
+            doc_date_m = re.search(r'(?i)(?:Place\s*[:.-]?\s*[A-Za-z\s]+[,\s]+)?(?:Date|DATE|Dated|DATED)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})', combined)
+            if doc_date_m:
+                shared["document_date"] = doc_date_m.group(1).strip().replace(".", "-").replace("/", "-")
 
         # 2. Institution / Bank Name
         bank_m = re.search(r'(?i)(LIC\s+Housing\s+Finance\s+Ltd|LIC\s+HFL|Canara\s+Bank|Bank\s+of\s+Baroda|State\s+Bank\s+of\s+India|Indian\s+Bank|Punjab\s+National\s+Bank|Union\s+Bank\s+of\s+India|Axis\s+Bank|ICICI\s+Bank|HDFC\s+Bank)', combined)
@@ -1754,7 +1859,57 @@ class AuctionParser:
         if officer_m:
             shared["authorized_officer_name"] = officer_m.group(1).strip()
 
-        # 5. Notice-Level Increment Price (e.g. Initial Bidding increment is fixed as Rs.20,000/- or Rs.50,000/-)
+        # 5. Notice-Level Auction Date & Time Range Header Extraction (e.g., "28.07.2026, 10:00 AM TO 01:00 PM" or "24.072026FROM02:00PMTO06:00PM")
+        clean_combined = re.sub(r'\bFROM\b', ' FROM ', combined, flags=re.IGNORECASE)
+        clean_combined = re.sub(r'\bTO\b', ' TO ', clean_combined, flags=re.IGNORECASE)
+        clean_combined = clean_combined.replace("A.M.", "AM").replace("P.M.", "PM")
+
+        auc_dt_range_m = re.search(
+            r'(?i)(?:DATE\s*(?:AND|&)?\s*TIME\s*(?:OF\s*(?:COMMENCEMENT\s*OF\s*)?(?:E-?)?AUCTION)?|Auction\s*Date\s*and\s*Time|Date\s*of\s*(?:E-?)?Auction|E-?Auction\s*Date)?\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]?\d{2,4})[,\s]* (?:FROM\s*)?(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*(?:TO|-|UNTIL)\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)',
+            clean_combined
+        )
+        if not auc_dt_range_m:
+            auc_dt_range_m = re.search(
+                r'(?i)(\d{2}\.\d{2}\.?\d{4}|\d{2}\.\d{6})\s*FROM\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*TO\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM))',
+                clean_combined
+            )
+
+        if auc_dt_range_m:
+            raw_d = auc_dt_range_m.group(1).strip().replace(".", "-").replace("/", "-")
+            # Handle concatenated OCR dates like 24.072026 -> 24-07-2026
+            m_concat = re.fullmatch(r'(\d{2})-(\d{2})(\d{4})', raw_d)
+            if m_concat:
+                norm_d = f"{m_concat.group(3)}-{m_concat.group(2)}-{m_concat.group(1)}"
+            else:
+                p = raw_d.split("-")
+                if len(p) == 3:
+                    if len(p[2]) == 2:
+                        p[2] = "20" + p[2]
+                    norm_d = f"{p[2]}-{p[1].zfill(2)}-{p[0].zfill(2)}"
+                else:
+                    norm_d = raw_d
+
+            shared["auction_date"] = norm_d
+            t_start = auc_dt_range_m.group(2).strip()
+            t_end = auc_dt_range_m.group(3).strip()
+
+            try:
+                import dateutil.parser
+                dt_start = dateutil.parser.parse(f"{norm_d} {t_start}")
+                dt_end = dateutil.parser.parse(f"{norm_d} {t_end}")
+                shared["auction_start_datetime"] = dt_start.strftime("%Y-%m-%d %H:%M:%S")
+                shared["auction_end_datetime"] = dt_end.strftime("%Y-%m-%d %H:%M:%S")
+                shared["auction_date_time"] = shared["auction_start_datetime"]
+                shared["auction_end_date_time"] = shared["auction_end_datetime"]
+                shared["auction_time"] = dt_start.strftime("%H:%M:%S")
+                shared["auction_end_time"] = dt_end.strftime("%H:%M:%S")
+            except Exception:
+                shared["auction_start_datetime"] = f"{norm_d} {t_start}"
+                shared["auction_end_datetime"] = f"{norm_d} {t_end}"
+                shared["auction_time"] = t_start
+                shared["auction_end_time"] = t_end
+
+        # 6. Notice-Level Increment Price (e.g. Initial Bidding increment is fixed as Rs.20,000/- or Rs.50,000/-)
         inc_m = re.search(r'(?i)(?:Bidding\s+)?increment\s*(?:is\s+fixed\s+as\s+)?[:.-]?\s*(?:Rs\.?|INR)?\s*([\d,]+)', combined)
         if inc_m:
             try:

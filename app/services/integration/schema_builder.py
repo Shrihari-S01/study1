@@ -27,7 +27,7 @@ class CommonAISchemaBuilder:
 
         norm_raw = CanonicalAliasNormalizer.normalize_record_aliases(raw_record)
 
-        def get_field(*keys, default: Any = "") -> Any:
+        def first_valid(*keys, default: Any = "") -> Any:
             for k in keys:
                 if k in norm_raw and norm_raw[k] is not None:
                     val = norm_raw[k]
@@ -43,28 +43,39 @@ class CommonAISchemaBuilder:
                         return val
             return default
 
+        get_field = first_valid
+
         schema: Dict[str, Any] = dict(norm_raw)
 
         schema.update({
             "lot_index": lot_index,
             "raw_id": get_field("id", "raw_id"),
-            "auction_number": get_field("auction_no", "notice_auction_id", "auction_number", "auction_id"),
+            "auction_number": get_field("auction_number", "p_auction_number", "auction_no", "notice_auction_id", "auction_id"),
+            "p_auction_number": get_field("p_auction_number", "auction_number", "auction_no"),
+            "auction_date": get_field("auction_date", "p_auction_date", "date_of_auction", "event_date", "auction_start_datetime", "auction_start_date_time", "auction_start_date"),
+            "p_auction_date": get_field("p_auction_date", "auction_date", "date_of_auction", "event_date", "auction_start_datetime", "auction_start_date_time"),
             "auction_start_datetime": get_field(
                 "auction_start_datetime", "auction_start_date_time", "auction_date_time",
                 "auction_date", "auction_start_date", "date_of_auction", "date_time_of_auction",
-                "auction_schedule", "event_date", "auction_time"
+                "auction_schedule", "event_date"
             ),
             "auction_end_datetime": get_field("auction_end_datetime", "auction_end_date_time", "auction_end_date"),
             "reserve_price": get_field(
-                "reserve_price", "reserver_price", "reserve_amount", "reserve_rate",
+                "reserve_price", "reserver_price", "p_reserver_price", "reserve_amount", "reserve_rate",
                 "starting_price", "auction_start_price", "starting_bid", "opening_bid",
                 "upset_price", "base_price", "start_floor_price"
+            ),
+            "reserver_price": get_field(
+                "reserver_price", "p_reserver_price", "reserve_price", "reserve_amount"
+            ),
+            "p_reserver_price": get_field(
+                "p_reserver_price", "reserver_price", "reserve_price"
             ),
             "auction_start_price": get_field(
                 "auction_start_price", "starting_price", "starting_bid", "opening_bid",
                 "upset_price", "base_price", "start_floor_price", "reserve_price"
             ),
-            "increment_price": get_field(
+            "increment_price": get_num if False else get_field(
                 "increment_price", "bid_increment", "bid_increase_amount", "bid_increase",
                 "increase_amount", "min_bid_increment", "bid_increment_amount"
             ),
@@ -72,12 +83,16 @@ class CommonAISchemaBuilder:
                 "emd_amount", "emd_price", "pre_bid_emd", "emd_value", "deposit_amount"
             ),
             "currency": get_field("currency", default="INR"),
-            "borrower_name": get_field("borrower", "borrower_name", "borrower_s", "applicant_name"),
+            "borrower_name": get_field("borrower_name", "p_borrower_name", "borrower", "borrower_s", "applicant_name", "borrower_details"),
             "seller_name": get_field("institution_seller", "institution_seller_name", "seller_name", "bank_name", "institution"),
-            "asset_location": get_field("assets_location", "product_location", "location", "property_address", "address"),
+            "asset_location": get_field("product_location", "p_product_location", "assets_location", "asset_location", "location", "property_address", "property_location", "address"),
+            "product_location": get_field("product_location", "p_product_location", "assets_location", "asset_location", "location", "property_address", "property_location", "address"),
+            "p_product_location": get_field("p_product_location", "product_location", "assets_location", "asset_location", "property_address"),
+            "property_address": get_field("property_address", "product_location", "assets_location", "asset_location", "address"),
             "asset_type": get_field("asset_type", "asset_category"),
             "asset_category": get_field("asset_category", "asset_subcategory"),
-            "description": get_field("auction_description", "auction_details", "description"),
+            "description": get_field("description", "auction_description", "auction_details", "auction_breif", "auction_brief", "property_address"),
+            "auction_description": get_field("auction_description", "description", "auction_details", "property_address"),
             "auction_type": get_field("auction_type", "event_type"),
             "auto_extension": get_field("auto_extension"),
             "auto_extension_mode": get_field("auto_extension_mode", default="Infinite"),
@@ -94,7 +109,7 @@ class CommonAISchemaBuilder:
             "authorized_officer_number": get_field("authorized_officer_number", "contact_number", "telephone_number"),
             "digital_certificate": get_field("digital_certificate", "dsc"),
             "p_dsc": get_field("p_dsc", "dsc_applicable", "dsc_required"),
-            "catalogue_view_date": get_field("catalogue_view_date", "sale_notice_date", "notice_date", "publication_date", "issue_date", "date", "dated", "place_and_date"),
+            "catalogue_view_date": get_field("catalogue_view_date", "sale_notice_date", "notice_date", "publication_date", "issue_date"),
             "full_payment_balance": get_field("full_payment_balance"),
             "delivery_of_material_taken": get_field("delivery_of_material_taken"),
             "quantity": get_field("quantity"),

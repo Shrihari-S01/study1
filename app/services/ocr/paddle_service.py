@@ -79,17 +79,25 @@ class PaddleOCRService:
                     yield
 
             try:
+                import os
+                num_cpus = min(8, os.cpu_count() or 4)
+                os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+                os.environ["MKL_NUM_THREADS"] = str(num_cpus)
                 with suppress_c_stderr():
                     PaddleOCRService._ocr = PaddleOCR(
                         lang="en",
                         use_angle_cls=False,
                         use_gpu=False,
+                        rec_batch_num=16,
+                        cpu_threads=num_cpus,
+                        enable_mkldnn=True,
+                        det_limit_side_len=960,
                     )
                     import numpy as np
                     dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
                     # Dry run local OCR to check for native C++ dynamic operator crashes
                     PaddleOCRService._ocr.ocr(dummy_img, cls=False)
-                logger.info("PaddleOCR Loaded and checked successfully.")
+                logger.info("PaddleOCR Loaded and checked successfully (CPU Threads: %d, MKL-DNN: True, Batch: 16).", num_cpus)
             except Exception as exc:
                 logger.warning("PaddleOCR check failed: Disabling local PaddleOCR (routing to Gemini OCR directly).")
                 PaddleOCRService._ocr = None
@@ -283,7 +291,26 @@ class PaddleOCRService:
             return res
 
         try:
+            import time
+            t_start = time.time()
             result = self.ocr.ocr(str(image_path), cls=False)
+            t_total = time.time() - t_start
+            
+            box_count = 0
+            if result and isinstance(result, list) and len(result) > 0 and result[0]:
+                box_count = len(result[0])
+
+            logger.info(
+                "\n==================================================\n"
+                "[PADDLEOCR SINGLE-PASS TIMING DIAGNOSTIC]\n"
+                "Target Image     : %s\n"
+                "Recognition Boxes: %d boxes\n"
+                "Total OCR Time   : %.3f seconds\n"
+                "==================================================",
+                Path(image_path).name,
+                box_count,
+                t_total,
+            )
             SpatialOCRIndexCache.put(image_path, result)
             return result
         except Exception as exc:

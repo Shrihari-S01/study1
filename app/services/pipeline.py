@@ -400,48 +400,32 @@ class AuctionPipeline:
         ocr_text = ""
         try:
             from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
-            cached_idx = SpatialOCRIndexCache.get(original_file_path or image_path)
-            if cached_idx and bbox_meta and "x" in bbox_meta and "y" in bbox_meta:
-                
-                ocr_text = cached_idx.query_bounding_box(
-                    x=float(bbox_meta.get("x", 0)),
-                    y=float(bbox_meta.get("y", 0)),
-                    w=float(bbox_meta.get("width", 500)),
-                    h=float(bbox_meta.get("height", 500)),
-                    margin=30.0,
-                )
-            if not ocr_text or len(ocr_text.split()) < 10:
-                # Fallback to direct crop OCR only if spatial query returned sparse text
+            cached_idx = SpatialOCRIndexCache.get(original_file_path) or SpatialOCRIndexCache.get(image_path)
+            if not cached_idx and hasattr(SpatialOCRIndexCache, "_cache") and SpatialOCRIndexCache._cache:
+                for active_k in list(SpatialOCRIndexCache._cache.keys()):
+                    if active_k:
+                        cached_idx = SpatialOCRIndexCache._cache[active_k]
+                        break
+
+            if cached_idx:
+                if bbox_meta and "x" in bbox_meta and "y" in bbox_meta:
+                    ocr_text = cached_idx.query_bounding_box(
+                        x=float(bbox_meta.get("x", 0)),
+                        y=float(bbox_meta.get("y", 0)),
+                        w=float(bbox_meta.get("width", 500)),
+                        h=float(bbox_meta.get("height", 500)),
+                        margin=80.0,
+                    )
+                if not ocr_text or len(ocr_text.split()) < 10:
+                    ocr_text = cached_idx.get_full_text()
+            else:
                 ocr_text = await self.extract_text(image_path)
         except Exception:
-            logger.exception("Direct crop OCR text extraction failed.")
+            logger.exception("Spatial OCR text query failed.")
             ocr_text = ""
 
+        ocr_words = ocr_text.split() if ocr_text else []
         retry_count = 0
-        try:
-            # Adaptive OCR Enhancement & Boundary Expansion Retry if text density is sparse (< 10 words)
-            ocr_words = ocr_text.split() if ocr_text else []
-            lot_idx_log = bbox_meta.get("auction_number", 1) if bbox_meta else 1
-            if len(ocr_words) < 10:
-                logger.info("[Lot #%s] Sparse OCR text detected (%d words). Attempting expanded crop retry.", lot_idx_log, len(ocr_words))
-                expanded_crop_path = self.image_enhancer.expand_and_enhance_crop(
-                    full_image_path=original_file_path or str(image_path),
-                    bbox=bbox_meta or {},
-                    margin_percent=0.15,
-                    output_crop_path=str(image_path),
-                )
-                retry_text = await self.extract_text(expanded_crop_path)
-                retry_words = retry_text.split() if retry_text else []
-                if len(retry_words) > len(ocr_words):
-                    logger.info("[Lot #%s] Expanded crop OCR retry succeeded: word count improved from %d to %d.", lot_idx_log, len(ocr_words), len(retry_words))
-                    ocr_text = retry_text
-                    ocr_words = retry_words
-                    retry_count = 1
-                else:
-                    logger.warning("[Lot #%s] Expanded crop OCR word count remained low (%d words).", lot_idx_log, len(retry_words))
-        except Exception as retry_err:
-            logger.warning("Adaptive expanded OCR retry failed: %s", retry_err)
-
         try:
             # Hybrid Fast Path Routing: Evaluate OCR confidence, density, and field completeness
             if len(ocr_words) >= 15:

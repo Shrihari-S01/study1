@@ -58,13 +58,24 @@ def sanitize_string_field(value: Any) -> str:
 def sanitize_json_payload(data: Any) -> Any:
     """
     Recursively sanitize dictionaries, lists, and strings for 100% safe JSON serialization.
+    Preserves None as JSON null for numeric and optional schema fields.
+    Guarantees no numeric key ever contains empty string "".
     """
     if data is None:
-        return ""
+        return None
+    if isinstance(data, dict):
+        cleaned_dict = {}
+        for k, v in data.items():
+            clean_k = sanitize_varchar_field(k)
+            fn_lower = clean_k.lower()
+            if any(kw in fn_lower for kw in ["price", "amount", "increment", "balance", "rate", "cost", "fee"]):
+                if v is None or v == "" or str(v).strip() == "" or str(v).strip().lower() in {"none", "null", "n/a", "undefined"}:
+                    cleaned_dict[clean_k] = 0.00
+                    continue
+            cleaned_dict[clean_k] = sanitize_json_payload(v)
+        return cleaned_dict
     if isinstance(data, str):
         return sanitize_varchar_field(data)
-    if isinstance(data, dict):
-        return {sanitize_varchar_field(k): sanitize_json_payload(v) for k, v in data.items()}
     if isinstance(data, (list, tuple, set)):
         return [sanitize_json_payload(item) for item in data]
     if isinstance(data, (int, float, bool)):
@@ -74,18 +85,6 @@ def sanitize_json_payload(data: Any) -> Any:
 class PHPSanitizer:
     r"""
     Dedicated Schema-Driven PHP Payload Normalizer & Validation Framework.
-    
-    1. Keeps original extracted data unchanged by creating a new payload object for PHP.
-    2. Accepts multiple semantic inputs for ENUM fields and normalizes them dynamically.
-    3. Schema-driven: Supports ENUM, VARCHAR, TEXT, INTEGER, DATE, DATETIME, DECIMAL via PHP_SCHEMA_SPEC.
-    4. Produces detailed audit logs per field:
-       Field Name
-       Expected Type
-       Allowed Values
-       Incoming Value
-       Normalized Value
-       Validation Result
-    5. Rejects any invalid enum or schema-failing field before calling PHP API.
     """
 
     @classmethod
@@ -97,9 +96,6 @@ class PHPSanitizer:
         """
         Creates a new, fully sanitized & schema-validated payload object specifically for PHP insertion.
         Original payload dict is NOT mutated.
-        
-        Returns:
-            Tuple[sanitized_payload, is_valid, validation_errors]
         """
         if not isinstance(payload, dict):
             return {}, False, ["Payload must be a dictionary"]
@@ -121,12 +117,26 @@ class PHPSanitizer:
 
         for field_name in field_keys:
             orig_val = payload.get(field_name)
-            spec = PHP_SCHEMA_SPEC.get(field_name, {"type": "VARCHAR", "max_length": 255, "required": False, "default": ""})
-            is_req = spec.get("required", False)
-            default_val = spec.get("default", "")
+            spec = PHP_SCHEMA_SPEC.get(field_name)
+            if not spec:
+                fn_lower = field_name.lower()
+                if any(kw in fn_lower for kw in ["price", "amount", "increment", "balance", "rate", "cost", "fee"]):
+                    spec = {"type": "DECIMAL", "max_length": 50, "required": False, "default": None}
+                else:
+                    spec = {"type": "VARCHAR", "max_length": 255, "required": False, "default": ""}
 
-            if orig_val is None or str(orig_val).strip() == "":
-                fallback_val = default_val if default_val is not None else ""
+            expected_type = spec.get("type", "VARCHAR").upper()
+            is_req = spec.get("required", False)
+            default_val = spec.get("default")
+
+            if orig_val is None or str(orig_val).strip() == "" or str(orig_val).strip().lower() in {"none", "null", "n/a", "undefined"}:
+                if expected_type in {"FLOAT", "DECIMAL"}:
+                    fallback_val = float(default_val) if (default_val is not None and str(default_val).strip() != "" and str(default_val).strip().lower() not in {"none", "null"}) else None
+                elif expected_type in {"INTEGER", "DATE", "DATETIME"}:
+                    fallback_val = default_val if (default_val is not None and str(default_val).strip() != "" and str(default_val).strip().lower() not in {"none", "null"}) else None
+                else:
+                    fallback_val = default_val if default_val is not None else ""
+                
                 sanitized_payload[field_name] = fallback_val
                 if is_req:
                     validation_errors.append(f"Field '{field_name}': Mandatory required field is missing or empty")

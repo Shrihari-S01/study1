@@ -132,18 +132,30 @@ class Validator:
             validated.get("possession_type", "")
         )
 
-        val_rp = validated.get("reserve_price") or validated.get("starting_price") or ""
-        clean_rp = self.validate_reserve_price(val_rp)
+        def clean_numeric_field(val: Any) -> Any:
+            if val is None or str(val).strip() in {"", "none", "null", "n/a", "undefined"}:
+                return None
+            clean_str = re.sub(r"[^\d.]", "", str(val))
+            if clean_str:
+                try:
+                    flt = float(clean_str)
+                    return int(flt) if flt.is_integer() else flt
+                except ValueError:
+                    pass
+            return None
+
+        val_rp = validated.get("reserve_price") or validated.get("starting_price")
+        clean_rp = clean_numeric_field(val_rp)
         validated["reserve_price"] = clean_rp
         validated["starting_price"] = clean_rp
 
-        val_emd = validated.get("emd_price") or validated.get("emd_amount") or validated.get("pre_bid_emd") or ""
-        clean_emd = self.validate_emd(val_emd)
+        val_emd = validated.get("emd_price") or validated.get("emd_amount") or validated.get("pre_bid_emd")
+        clean_emd = clean_numeric_field(val_emd)
         validated["emd_price"] = clean_emd
         validated["emd_amount"] = clean_emd
 
-        val_inc = validated.get("increment_price") or validated.get("bid_increment") or ""
-        clean_inc = self.validate_bid_increment(val_inc)
+        val_inc = validated.get("increment_price") or validated.get("bid_increment")
+        clean_inc = clean_numeric_field(val_inc)
         validated["increment_price"] = clean_inc
         validated["bid_increment"] = clean_inc
 

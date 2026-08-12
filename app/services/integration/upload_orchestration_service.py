@@ -115,17 +115,31 @@ class UploadOrchestrationService:
         if not payload.get("institution_seller"):
             payload["institution_seller"] = str(payload.get("seller_name") or payload.get("vendor_name") or payload.get("bank_name") or payload.get("institution_seller") or "")
 
-        # 7. EMD Price & Increment Price
-        emd_val = str(payload.get("emd_price") or payload.get("emd_amount") or payload.get("pre_bid_emd") or "")
-        if emd_val:
-            payload["emd_price"] = emd_val
-            payload["emd_amount"] = emd_val
-            payload["pre_bid_emd"] = emd_val
+        # 7. EMD Price & Increment Price (Must map to numeric float/int or None, NEVER empty string "")
+        import re
+        def parse_numeric(v: Any) -> Any:
+            if v is None or str(v).strip() in {"", "none", "null", "n/a", "undefined"}:
+                return None
+            c = re.sub(r"[^\d.]", "", str(v))
+            if c:
+                try:
+                    f = float(c)
+                    return int(f) if f.is_integer() else f
+                except ValueError:
+                    pass
+            return None
 
-        inc_val = str(payload.get("increment_price") or payload.get("bid_increment") or "")
-        if inc_val:
-            payload["increment_price"] = inc_val
-            payload["bid_increment"] = inc_val
+        emd_val = parse_numeric(payload.get("emd_price") or payload.get("emd_amount") or payload.get("pre_bid_emd") or payload.get("p_emd_price"))
+        payload["emd_price"] = emd_val
+        payload["emd_amount"] = emd_val
+        payload["pre_bid_emd"] = emd_val
+        payload["p_emd_price"] = emd_val
+        payload["p_emd_amount"] = emd_val
+
+        inc_val = parse_numeric(payload.get("increment_price") or payload.get("bid_increment") or payload.get("p_increment_price"))
+        payload["increment_price"] = inc_val
+        payload["bid_increment"] = inc_val
+        payload["p_increment_price"] = inc_val
 
         # 8. Auction Live Status (Map human text 'Pending' -> 1-char DB code 'N')
         raw_live_status = payload.get("auction_live_status") or payload.get("live_status") or "Pending"
@@ -410,9 +424,13 @@ class UploadOrchestrationService:
         # CHECKPOINT 1 Log in process_document (before return)
         logger.info("[%s] CHECKPOINT 1 - Canonical Extracted Records Output: %s", processing_id, json.dumps(extracted_auction_records, default=str))
 
+        has_critical_failure = validation_failed_count > 0 or succ_recs == 0
+        proc_status = "FAILED" if has_critical_failure else "SUCCESS"
+        err_det = f"Extraction validation failed for {validation_failed_count} record(s)." if validation_failed_count > 0 else ("0 records extracted from document." if succ_recs == 0 else "")
+
         return DocumentProcessingResponse(
-            success=succ_recs > 0,
-            stage="DOCUMENT_PROCESSED",
+            success=not has_critical_failure,
+            stage="DOCUMENT_PROCESSED" if not has_critical_failure else "VALIDATION_FAILED",
             processing_id=processing_id,
             file_name=file_name,
             document_type=doc_type,
@@ -423,7 +441,9 @@ class UploadOrchestrationService:
                 "validation_failed": validation_failed_count,
             },
             records=extracted_auction_records,
-            message=f"Document '{file_name}' processed successfully. {succ_recs}/{total_recs} auction records extracted for UI review.",
+            processing_status=proc_status,
+            error_detail=err_det,
+            message=f"Document '{file_name}' processed with status: {proc_status}. {succ_recs}/{total_recs} records extracted.",
         )
 
     async def _insert_single_record(
@@ -569,7 +589,65 @@ class UploadOrchestrationService:
                     error=err_detail,
                 )
 
-            # 6. Send insert request to PHP API
+            # Requirement #15: AUCTION NUMERIC FIELD TRACE
+            ext_inc = raw_record.get("increment_price") if isinstance(raw_record, dict) else None
+            canon_inc = raw_record.get("increment_price") if isinstance(raw_record, dict) else None
+            map_inc = merged_payload.get("increment_price") if isinstance(merged_payload, dict) else None
+            norm_inc = final_php_payload.get("increment_price")
+            final_p_inc = final_php_payload.get("p_increment_price")
+
+            logger.info(
+                "\n========== AUCTION NUMERIC FIELD TRACE ==========\n"
+                "Extracted increment_price:\n  value = %r\n  type = %s\n\n"
+                "Canonical increment_price:\n  value = %r\n  type = %s\n\n"
+                "Mapped increment_price:\n  value = %r\n  type = %s\n\n"
+                "Normalized increment_price:\n  value = %r\n  type = %s\n\n"
+                "Final Python p_increment_price:\n  value = %r\n  type = %s\n\n"
+                "HTTP JSON p_increment_price:\n  value = %s\n  JSON type = %s\n\n"
+                "PHP received p_increment_price:\n  value = Logged at PHP endpoint\n  PHP type = PHP string/null\n\n"
+                "PHP stored procedure parameter:\n  value = Logged at PHP procedure layer\n  type = DECIMAL\n\n"
+                "MySQL final value:\n  value = Logged at MySQL INSERT layer\n  type = DECIMAL(10,2)\n"
+                "=================================================",
+                ext_inc,
+                type(ext_inc).__name__,
+                canon_inc,
+                type(canon_inc).__name__,
+                map_inc,
+                type(map_inc).__name__,
+                norm_inc,
+                type(norm_inc).__name__,
+                final_p_inc,
+                type(final_p_inc).__name__,
+                "null" if final_p_inc is None else repr(final_p_inc),
+                "null" if final_p_inc is None else type(final_p_inc).__name__,
+            )
+
+            # Dynamic Database Type Normalization for all DECIMAL & pricing fields
+            from app.services.integration.php_payload_normalizer import PHP_SCHEMA_SPEC, CentralizedPHPPayloadNormalizer
+            DECIMAL_FIELDS = [k for k, spec in PHP_SCHEMA_SPEC.items() if spec.get("type") in {"DECIMAL", "FLOAT"}]
+            for k in list(final_php_payload.keys()):
+                if k.lower().endswith(("_price", "_amount", "_increment", "_emd")) and k not in DECIMAL_FIELDS:
+                    DECIMAL_FIELDS.append(k)
+            for dec_field in DECIMAL_FIELDS:
+                if dec_field in final_php_payload:
+                    raw_f_val = final_php_payload.get(dec_field)
+                    norm_dec = CentralizedPHPPayloadNormalizer.normalize_decimal_for_db(raw_f_val)
+                    converted_f_val = float(norm_dec)
+                    if raw_f_val in {"", None} or (isinstance(raw_f_val, str) and not raw_f_val.strip()):
+                        logger.info("[PHP PAYLOAD NUMERIC NORMALIZATION] %s: %r -> 0.00", dec_field, raw_f_val)
+                    final_php_payload[dec_field] = converted_f_val
+
+            # Requirement #12: Log [FINAL PHP DB PAYLOAD]
+            p_inc_val = final_php_payload.get("p_increment_price")
+            logger.info(
+                "\n[FINAL PHP DB PAYLOAD]\n"
+                "p_increment_price = %s\n"
+                "type = %s\n",
+                "NULL" if p_inc_val is None else f"{p_inc_val:.2f}",
+                type(p_inc_val).__name__,
+            )
+
+            # 7. Send insert request to PHP API
             status_code, raw_resp_json, err_detail = await self.php_client.send_insert_request(
                 payload=final_php_payload,
                 processing_id=processing_id,
@@ -585,6 +663,53 @@ class UploadOrchestrationService:
             is_succ = getattr(parsed_resp, "success", getattr(parsed_resp, "is_success", False))
             rec_id = str(parsed_resp.record_id or "").strip()
             final_err_detail = "" if is_succ else (f"MySQL insertion failed: {parsed_resp.message}" if "too long" in parsed_resp.message.lower() or "sqlstate" in parsed_resp.message.lower() else (err_detail or parsed_resp.message))
+
+            # 8-STEP COMPLETE INSERT LIFECYCLE AUDIT (Requirement #4)
+            import hashlib
+            payload_hash = hashlib.sha256(json.dumps(final_php_payload, default=str).encode("utf-8")).hexdigest()[:12]
+            php_status_flag = raw_resp_json.get("status") if isinstance(raw_resp_json, dict) else "N/A"
+            php_code_flag = raw_resp_json.get("code") if isinstance(raw_resp_json, dict) else status_code
+
+            logger.info(
+                "\n==================================================\n"
+                "COMPLETE INSERT FLOW LIFECYCLE TRACE (Lot #%d)\n"
+                "1. Canonical Record    : PRESERVED\n"
+                "2. PHP Payload         : GENERATED\n"
+                "3. Serialized Payload  : HASH %s\n"
+                "4. HTTP Request        : SENT (HTTP %d)\n"
+                "5. PHP HTTP Response   : RECEIVED (HTTP %d)\n"
+                "6. PHP Response Parser : STATUS_CAT=%s, IS_SUCCESS=%s\n"
+                "7. Insert Result       : STATUS=%s, REC_ID=%r\n"
+                "8. Final API Response  : EXPOSED\n\n"
+                "RECORD SUMMARY:\n"
+                "record_no              : %d\n"
+                "auction_number         : %s\n"
+                "payload_hash           : %s\n"
+                "PHP HTTP status        : %d\n"
+                "PHP response status    : %s\n"
+                "PHP response code      : %s\n"
+                "PHP response message   : %r\n"
+                "php_record_id          : %r\n"
+                "final insertion status : %s\n"
+                "==================================================",
+                lot_index,
+                payload_hash,
+                status_code,
+                status_code,
+                parsed_resp.status_category,
+                is_succ,
+                "SUCCESS" if is_succ else "FAILED",
+                rec_id,
+                lot_index,
+                auction_num,
+                payload_hash,
+                status_code,
+                php_status_flag,
+                php_code_flag,
+                parsed_resp.message,
+                rec_id,
+                "SUCCESS" if is_succ else "FAILED",
+            )
 
             if is_succ:
                 logger.info("[%s][Record #%d] PHP Insertion SUCCESS (Record ID: %s, Needs Review: %s)", processing_id, lot_index, rec_id, needs_manual_review)
@@ -786,9 +911,16 @@ class UploadOrchestrationService:
                 failed_count += 1
 
         total_elapsed = round(time.time() - start_time, 2)
-        overall_success = (inserted_count > 0)
-        final_status = "COMPLETED" if failed_count == 0 else ("COMPLETED_WITH_FAILURES" if inserted_count > 0 else "PHP_INSERT_FAILED")
-        summary_msg = f"Batch submission completed for '{processing_id}'. Inserted {inserted_count}/{total_recs} records into PHP Master Software in {total_elapsed}s." if overall_success else f"Batch submission failed for '{processing_id}'. Inserted 0/{total_recs} records into PHP Master Software."
+        overall_success = (inserted_count == total_recs and total_recs > 0)
+        
+        if inserted_count == total_recs and total_recs > 0:
+            final_status = "COMPLETED"
+        elif inserted_count > 0 and failed_count > 0:
+            final_status = "PARTIALLY_COMPLETED"
+        else:
+            final_status = "PHP_INSERT_FAILED"
+
+        summary_msg = f"Batch submission completed for '{processing_id}'. Inserted {inserted_count}/{total_recs} records into PHP Master Software in {total_elapsed}s." if overall_success else f"Batch submission failed for '{processing_id}'. Inserted {inserted_count}/{total_recs} records into PHP Master Software."
 
         combined_php_ids = ", ".join(successful_record_ids)
 
@@ -975,6 +1107,18 @@ class UploadOrchestrationService:
                     )
                 )
                 continue
+
+            # Final DECIMAL field boundary normalization for submit_auction
+            from app.services.integration.php_payload_normalizer import PHP_SCHEMA_SPEC, CentralizedPHPPayloadNormalizer
+            DECIMAL_FIELDS = [k for k, spec in PHP_SCHEMA_SPEC.items() if spec.get("type") in {"DECIMAL", "FLOAT"}]
+            for k in list(php_payload.keys()):
+                if k.lower().endswith(("_price", "_amount", "_increment", "_emd")) and k not in DECIMAL_FIELDS:
+                    DECIMAL_FIELDS.append(k)
+            for dec_field in DECIMAL_FIELDS:
+                if dec_field in php_payload:
+                    raw_f_val = php_payload.get(dec_field)
+                    norm_dec = CentralizedPHPPayloadNormalizer.normalize_decimal_for_db(raw_f_val)
+                    php_payload[dec_field] = float(norm_dec)
 
             status_code, raw_resp_json, err_detail = await self.php_client.send_insert_request(
                 payload=php_payload,

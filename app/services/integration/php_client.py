@@ -80,7 +80,47 @@ class PHPIntegrationClient:
                 "\n".join(f"  - Field '{field}': Chars {chars} | Value: {val!r}" for field, val, chars in special_char_matches)
             )
         
+        # Final boundary safety: ensure any DECIMAL field holding empty string "" or None is converted to 0.00
+        from app.services.integration.php_payload_normalizer import PHP_SCHEMA_SPEC, CentralizedPHPPayloadNormalizer
+        decimal_keys = [k for k, spec in PHP_SCHEMA_SPEC.items() if spec.get("type") in {"DECIMAL", "FLOAT"}]
+        for k in list(sanitized_payload.keys()):
+            if k.lower().endswith(("_price", "_amount", "_increment", "_emd")) and k not in decimal_keys:
+                decimal_keys.append(k)
+        for d_key in decimal_keys:
+            val = sanitized_payload.get(d_key)
+            if val is None or val == "" or (isinstance(val, str) and val.strip() == ""):
+                sanitized_payload[d_key] = 0.00
+            else:
+                norm_dec = CentralizedPHPPayloadNormalizer.normalize_decimal_for_db(val)
+                sanitized_payload[d_key] = float(norm_dec)
+
         post_json_body = json.dumps(sanitized_payload, default=str, ensure_ascii=False)
+
+        # Requirement #8 & #9: Log FINAL DATE PAYLOAD and validate no zero dates before PHP HTTP Request
+        logger.info(
+            "\n========== FINAL DATE PAYLOAD ==========\n"
+            "auction_date:         %r\n"
+            "p_auction_date:       %r\n"
+            "auction_start_date:   %r\n"
+            "p_auction_start_date: %r\n"
+            "auction_end_date:     %r\n"
+            "p_auction_end_date:   %r\n"
+            "========================================",
+            sanitized_payload.get("auction_date"),
+            sanitized_payload.get("p_auction_date"),
+            sanitized_payload.get("auction_start_date") or sanitized_payload.get("start_date"),
+            sanitized_payload.get("p_auction_start_date") or sanitized_payload.get("p_start_date"),
+            sanitized_payload.get("auction_end_date") or sanitized_payload.get("end_date"),
+            sanitized_payload.get("p_auction_end_date") or sanitized_payload.get("p_end_date"),
+        )
+
+        date_fields_to_check = ["auction_date", "p_auction_date", "auction_start_date", "p_auction_start_date", "start_date", "p_start_date", "auction_end_date", "p_auction_end_date", "end_date", "p_end_date"]
+        for df in date_fields_to_check:
+            val_check = str(sanitized_payload.get(df) or "")
+            if "0000-00-00" in val_check:
+                err_msg = f"DATE_MAPPING_FAILURE: Field '{df}' contains forbidden zero date '{val_check}'. Submitting zero dates to PHP Master is strictly forbidden."
+                logger.error("[%s] %s", processing_id, err_msg)
+                raise ValueError(err_msg)
 
         auction_num = (
             sanitized_payload.get("p_auction_number")
@@ -137,18 +177,36 @@ class PHPIntegrationClient:
                 except Exception as json_err:
                     raw_response = {"raw_text": resp_text, "json_error": str(json_err)}
 
+                # Extract sanitized diagnostic properties for logging
+                php_status = raw_response.get("status") if isinstance(raw_response, dict) else "N/A"
+                php_code = raw_response.get("code") if isinstance(raw_response, dict) else status_code
+                php_msg = raw_response.get("message") or raw_response.get("msg") if isinstance(raw_response, dict) else resp_text[:200]
+                
+                php_rec_id = ""
+                if isinstance(raw_response, dict):
+                    php_rec_id = str(
+                        raw_response.get("id") or raw_response.get("record_id") or raw_response.get("insert_id") or
+                        (raw_response.get("data", {}).get("id") if isinstance(raw_response.get("data"), dict) else "")
+                    ).strip()
+
                 logger.info(
-                    "\n========== PHP INSERT API RESPONSE (Lot #%d, Attempt %d/%d) ==========\n"
-                    "HTTP Status Code : %d\n"
-                    "Response Headers : %s\n"
-                    "Response Body    : %s\n"
-                    "=====================================================================",
+                    "\n========== SANITIZED PHP DIAGNOSTIC RESPONSE (Lot #%d, Attempt %d/%d) ==========\n"
+                    "HTTP STATUS  : %d\n"
+                    "RESPONSE BODY: %s\n"
+                    "PHP STATUS   : %s\n"
+                    "PHP CODE     : %s\n"
+                    "PHP MESSAGE  : %s\n"
+                    "PHP RECORD ID: %s\n"
+                    "=================================================================================",
                     lot_index,
                     attempt,
                     self.max_retries,
                     status_code,
-                    dict(response.headers),
                     resp_text[:1000],
+                    php_status,
+                    php_code,
+                    php_msg,
+                    php_rec_id or "UNAVAILABLE",
                 )
 
                 # 1. Successful HTTP Response (200 / 201)

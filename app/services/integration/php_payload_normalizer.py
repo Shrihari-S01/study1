@@ -280,15 +280,34 @@ PHP_SCHEMA_SPEC: Dict[str, Dict[str, Any]] = {
     },
 
     # 4. Numeric & Pricing (DECIMAL)
+    "reserve_price": {"type": "DECIMAL", "max_length": 50},
     "reserver_price": {"type": "DECIMAL", "max_length": 50},
+    "p_reserve_price": {"type": "DECIMAL", "max_length": 50},
     "p_reserver_price": {"type": "DECIMAL", "max_length": 50},
     "auction_start_price": {"type": "DECIMAL", "max_length": 50},
+    "p_auction_start_price": {"type": "DECIMAL", "max_length": 50},
     "increment_price": {"type": "DECIMAL", "max_length": 50},
+    "p_increment_price": {"type": "DECIMAL", "max_length": 50},
+    "bid_increment": {"type": "DECIMAL", "max_length": 50},
+    "p_bid_increment": {"type": "DECIMAL", "max_length": 50},
     "emd_price": {"type": "DECIMAL", "max_length": 50},
+    "p_emd_price": {"type": "DECIMAL", "max_length": 50},
+    "emd_amount": {"type": "DECIMAL", "max_length": 50},
+    "p_emd_amount": {"type": "DECIMAL", "max_length": 50},
+    "pre_bid_emd": {"type": "DECIMAL", "max_length": 50},
+    "p_pre_bid_emd": {"type": "DECIMAL", "max_length": 50},
 
     # 5. Dates & Times (DATE / DATETIME)
     "auction_date": {"type": "DATE", "max_length": 20},
     "p_auction_date": {"type": "DATE", "max_length": 20},
+    "auction_start_date": {"type": "DATETIME", "max_length": 30},
+    "p_auction_start_date": {"type": "DATETIME", "max_length": 30},
+    "start_date": {"type": "DATETIME", "max_length": 30},
+    "p_start_date": {"type": "DATETIME", "max_length": 30},
+    "auction_end_date": {"type": "DATETIME", "max_length": 30},
+    "p_auction_end_date": {"type": "DATETIME", "max_length": 30},
+    "end_date": {"type": "DATETIME", "max_length": 30},
+    "p_end_date": {"type": "DATETIME", "max_length": 30},
     "emd_submission_date": {"type": "DATE", "max_length": 20},
     "p_emd_submission_date": {"type": "DATE", "max_length": 20},
     "inspection_date_time": {"type": "DATETIME", "max_length": 30},
@@ -640,6 +659,57 @@ class CentralizedPHPPayloadNormalizer:
 
         return truncated.rstrip(",.-;/")
 
+    MISSING_STRING_INDICATORS = {
+        "",
+        " ",
+        "null",
+        "none",
+        "n/a",
+        "na",
+        "-",
+        "not available",
+        "not specified",
+        "undefined",
+    }
+
+    @classmethod
+    def normalize_decimal_for_db(cls, val: Any) -> Decimal:
+        """
+        Canonical DECIMAL(10,2) Database Normalizer.
+        - None / Empty / whitespace / "null" / "None" / "N/A" / "NA" / "-" -> Decimal("0.00")
+        - "5,000", "₹5,000", "5000" -> Decimal("5000.00")
+        - "5000.50" -> Decimal("5000.50")
+        - 0 or 0.00 -> Decimal("0.00")
+        - Invalid non-numeric text -> Decimal("0.00")
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+
+        if val is None:
+            return Decimal("0.00")
+
+        if isinstance(val, (int, float, Decimal)):
+            try:
+                d = Decimal(str(val)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                return d
+            except Exception:
+                return Decimal("0.00")
+
+        val_str = str(val).strip()
+        if not val_str or val_str.lower() in cls.MISSING_STRING_INDICATORS:
+            return Decimal("0.00")
+
+        clean = re.sub(r"(?i)\b(rs|inr|rupees)\b\.?\s*", "", val_str)
+        clean = re.sub(r"[^\d.-]", "", clean).strip()
+
+        if not clean or clean in {"-", "."}:
+            return Decimal("0.00")
+
+        try:
+            d = Decimal(clean).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            return d
+        except Exception:
+            return Decimal("0.00")
+
     @classmethod
     def convert_value_by_spec(cls, field_name: str, raw_val: Any, spec: Dict[str, Any]) -> Tuple[Any, str]:
         """
@@ -647,14 +717,24 @@ class CentralizedPHPPayloadNormalizer:
         Supports: ENUM, VARCHAR, TEXT, INTEGER, DATE, DATETIME, DECIMAL.
         """
         target_type = str(spec.get("type", "VARCHAR")).upper()
+        fn_lower = field_name.lower()
+        if any(kw in fn_lower for kw in ["price", "amount", "increment", "balance", "rate", "cost", "fee"]):
+            target_type = "DECIMAL"
+
         max_len = spec.get("max_length", 255)
         enum_map = spec.get("enum_map")
         allowed_values = spec.get("allowed_values")
         default_val = spec.get("default")
 
-        if raw_val is None or str(raw_val).strip() == "":
-            if default_val is not None:
+        if target_type in {"FLOAT", "DECIMAL"}:
+            norm_dec = cls.normalize_decimal_for_db(raw_val)
+            return float(norm_dec), "PASS"
+
+        if raw_val is None or str(raw_val).strip() == "" or str(raw_val).strip().lower() in cls.MISSING_STRING_INDICATORS:
+            if default_val is not None and str(default_val).strip() != "" and str(default_val).strip().lower() not in {"none", "null"}:
                 return default_val, "PASS"
+            if target_type in {"FLOAT", "DECIMAL", "INTEGER"}:
+                return None, "PASS"
             return "", "PASS"
 
         val_str = str(raw_val).strip()
@@ -709,24 +789,25 @@ class CentralizedPHPPayloadNormalizer:
                 except ValueError:
                     pass
 
-            if default_val is not None:
+            if default_val is not None and str(default_val).strip() != "":
                 return int(default_val), "PASS"
-            return 0, "PASS"
+            return None, "PASS"
 
-        # 3. DECIMAL / FLOAT Datatype Engine
+        # 3. DECIMAL / FLOAT Datatype Engine (Strict DECIMAL(10,2) Quantization)
         if target_type in {"FLOAT", "DECIMAL"}:
+            from decimal import Decimal, ROUND_HALF_UP
             clean_num_str = re.sub(r"(?i)\b(rs|inr|rupees)\b\.?\s*", "", val_str)
-            clean_flt = re.sub(r"[^\d.]", "", clean_num_str).lstrip(".")
-            if clean_flt:
+            clean_flt = re.sub(r"[^\d.-]", "", clean_num_str).strip()
+            if clean_flt and clean_flt != "-":
                 try:
-                    flt = float(clean_flt)
-                    res_num = int(flt) if flt.is_integer() else f"{flt:.2f}"
-                    if len(str(res_num)) > max_len:
-                        return str(res_num)[:max_len], f"REJECTED: Numeric value exceeds max length {max_len}"
+                    d = Decimal(clean_flt).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    res_num = float(d) if not d.is_zero() else 0.0
                     return res_num, "PASS"
-                except ValueError:
+                except Exception:
                     pass
-            return "0", "PASS"
+
+            # Non-numeric string provided for DECIMAL column
+            return None, f"REJECTED: Non-numeric string '{val_str}' for {target_type} column"
 
         # 4. DATE / DATETIME Datatype Engine
         if target_type in {"DATE", "DATETIME"}:

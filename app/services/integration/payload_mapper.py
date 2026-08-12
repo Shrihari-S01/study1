@@ -72,37 +72,67 @@ class PurePayloadMapper:
         from app.services.integration.normalizer import DataNormalizer
         derived_loc = DataNormalizer.derive_product_location(norm_schema)
 
+        import re
+        def get_num(k1: str, k2: str = "", k3: str = "") -> Any:
+            val = norm_schema.get(k1) or (norm_schema.get(k2) if k2 else None) or (norm_schema.get(k3) if k3 else None)
+            if val is None or str(val).strip() == "" or str(val).strip().lower() in {"none", "null", "n/a", "undefined"}:
+                return None
+            try:
+                clean = re.sub(r"[^\d.]", "", str(val))
+                if clean:
+                    flt = float(clean)
+                    return int(flt) if flt.is_integer() else flt
+            except Exception:
+                pass
+            return None
+
         payload: Dict[str, Any] = dict(norm_schema)
+
+        raw_auc_num = str(norm_schema.get("auction_number") or "").strip()
+        if not raw_auc_num or raw_auc_num.lower() in {"none", "null", "n/a", "undefined"}:
+            raw_auc_num = str(lot_index).zfill(2)
 
         payload.update({
             # 1. Identifiers & Location
             "auction_id": str(norm_schema.get("raw_id") or ""),
-            "auction_number": str(norm_schema.get("auction_number") or ""),
+            "auction_number": raw_auc_num,
+            "p_auction_number": raw_auc_num,
             "auction_breif": str(norm_schema.get("description") or "")[:100] or "",
             "auction_type": str(norm_schema.get("auction_type") or ""),
-            "product_location": derived_loc or str(norm_schema.get("asset_location") or ""),
+            "product_location": derived_loc or "",
+            "p_product_location": derived_loc or "",
+            "property_address": str(norm_schema.get("property_address") or "") if not str(norm_schema.get("property_address") or "").startswith("[") and not str(norm_schema.get("property_address") or "").startswith("{") and "item:" not in str(norm_schema.get("property_address") or "").lower() else "",
             "auction_office": str(norm_schema.get("auction_office") or ""),
             "auction_department": str(norm_schema.get("auction_department") or ""),
 
-            # 2. Pricing & Timelines
-            "reserver_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or ""),
-            "reserve_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or ""),
-            "auction_start_price": str(norm_schema.get("reserve_price") or norm_schema.get("reserver_price") or norm_schema.get("auction_start_price") or ""),
-            "increment_price": str(norm_schema.get("increment_price") or norm_schema.get("bid_increment") or ""),
-            "bid_increment": str(norm_schema.get("increment_price") or norm_schema.get("bid_increment") or ""),
-            "emd_price": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
-            "emd_amount": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
-            "pre_bid_emd": str(norm_schema.get("emd_amount") or norm_schema.get("emd_price") or norm_schema.get("pre_bid_emd") or ""),
+            # 2. Pricing & Timelines (Numeric fields MUST return float/int or None, NEVER empty string "")
+            "reserver_price": get_num("reserve_price", "reserver_price", "p_reserver_price"),
+            "p_reserver_price": get_num("p_reserver_price", "reserver_price", "reserve_price"),
+            "reserve_price": get_num("reserve_price", "reserver_price", "p_reserver_price"),
+            "auction_start_price": get_num("reserve_price", "reserver_price", "auction_start_price"),
+            "increment_price": get_num("increment_price", "bid_increment"),
+            "bid_increment": get_num("increment_price", "bid_increment"),
+            "emd_price": get_num("emd_amount", "emd_price", "pre_bid_emd"),
+            "emd_amount": get_num("emd_amount", "emd_price", "pre_bid_emd"),
+            "pre_bid_emd": get_num("emd_amount", "emd_price", "pre_bid_emd"),
 
-            "auction_date": str(norm_schema.get("auction_start_datetime") or ""),
+            "auction_date": str(norm_schema.get("auction_date") or (str(norm_schema.get("auction_start_datetime")).split()[0] if norm_schema.get("auction_start_datetime") else "")),
+            "p_auction_date": str(norm_schema.get("auction_date") or (str(norm_schema.get("auction_start_datetime")).split()[0] if norm_schema.get("auction_start_datetime") else "")),
+            "auction_start_date": str(norm_schema.get("auction_start_datetime") or norm_schema.get("auction_date_time") or ""),
+            "p_auction_start_date": str(norm_schema.get("auction_start_datetime") or norm_schema.get("auction_date_time") or ""),
+            "start_date": str(norm_schema.get("auction_start_datetime") or norm_schema.get("auction_date_time") or ""),
+            "p_start_date": str(norm_schema.get("auction_start_datetime") or norm_schema.get("auction_date_time") or ""),
+            "auction_end_date": str(norm_schema.get("auction_end_datetime") or norm_schema.get("auction_end_date_time") or ""),
+            "p_auction_end_date": str(norm_schema.get("auction_end_datetime") or norm_schema.get("auction_end_date_time") or ""),
+            "end_date": str(norm_schema.get("auction_end_datetime") or norm_schema.get("auction_end_date_time") or ""),
+            "p_end_date": str(norm_schema.get("auction_end_datetime") or norm_schema.get("auction_end_date_time") or ""),
             "auction_time": str(norm_schema.get("auction_time") or ""),
-            "auction_end_date": str(norm_schema.get("auction_end_datetime") or ""),
             "auction_end_time": str(norm_schema.get("auction_end_time") or ""),
 
             "auction_auto_extension": str(norm_schema.get("auto_extension") or ""),
             "aucto_extension_mode": str(norm_schema.get("auto_extension_mode") or ""),
             "auction_end_time_mins": str(norm_schema.get("auction_extend_time") or ""),
-            "auction_details": str(norm_schema.get("description") or ""),
+            "auction_details": str(norm_schema.get("description") or "") if not str(norm_schema.get("description") or "").startswith("[") and not str(norm_schema.get("description") or "").startswith("{") else "",
 
             # 3. Parties & Terms
             "borrower_name": self.extract_borrower_name(norm_schema),

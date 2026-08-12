@@ -225,6 +225,10 @@ class DataNormalizer:
             ""
         ).strip()
 
+        # Reject if full_address is a JSON array/object string or contains item/machinery specifications
+        if full_address.startswith("[") or full_address.startswith("{") or "item:" in full_address.lower() or "make:" in full_address.lower():
+            full_address = ""
+
         # Step 1: Check explicit schema fields (locality, village, town, city, district)
         locality = str(data.get("locality") or data.get("sub_locality") or data.get("village") or data.get("town") or "").strip()
         locality = re.sub(r"(?i)\b(village|vpo|tehsil)\b\.?\s*", "", locality).strip()
@@ -413,20 +417,36 @@ class DataNormalizer:
                     pass
             return default
 
-        # 3. Helper: Format ISO DateTime (YYYY-MM-DDTHH:MM)
+        # 3. Helper: Format Clean Date (YYYY-MM-DD)
+        def clean_date(val: Any, default: str = "") -> str:
+            if not val:
+                return default
+            if isinstance(val, datetime):
+                return val.strftime("%Y-%m-%d")
+            val_str = clean_str(val)
+            if not val_str or val_str.startswith("0000"):
+                return default
+            try:
+                import dateutil.parser
+                dt = dateutil.parser.parse(val_str)
+                return dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+            return val_str
+
+        # 3b. Helper: Format Clean DateTime (YYYY-MM-DD HH:MM:SS)
         def clean_datetime(val: Any, default: str = "") -> str:
             if not val:
                 return default
             if isinstance(val, datetime):
-                return val.strftime("%Y-%m-%dT%H:%M")
+                return val.strftime("%Y-%m-%d %H:%M:%S")
             val_str = clean_str(val)
-            if not val_str:
+            if not val_str or val_str.startswith("0000"):
                 return default
             try:
-                # Attempt parsing ISO or date strings
                 import dateutil.parser
                 dt = dateutil.parser.parse(val_str)
-                return dt.strftime("%Y-%m-%dT%H:%M")
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 pass
             return val_str
@@ -444,12 +464,14 @@ class DataNormalizer:
 
         # Apply normalizations
         norm["auction_number"] = clean_str(norm.get("auction_number"))
-        norm["auction_start_datetime"] = clean_datetime(norm.get("auction_start_datetime"))
-        norm["auction_end_datetime"] = clean_datetime(norm.get("auction_end_datetime"))
+        norm["auction_date"] = clean_date(norm.get("auction_date") or (str(norm.get("auction_start_datetime")).split()[0] if norm.get("auction_start_datetime") else ""))
+        norm["p_auction_date"] = norm["auction_date"]
+        norm["auction_start_datetime"] = clean_datetime(norm.get("auction_start_datetime") or norm.get("auction_date_time"))
+        norm["auction_end_datetime"] = clean_datetime(norm.get("auction_end_datetime") or norm.get("auction_end_date_time"))
         norm["inspection_from_date"] = clean_datetime(norm.get("inspection_from_date"))
         norm["inspection_to_date"] = clean_datetime(norm.get("inspection_to_date"))
         norm["submit_application"] = clean_datetime(norm.get("submit_application"))
-        norm["catalogue_view_date"] = clean_datetime(norm.get("catalogue_view_date"))
+        norm["catalogue_view_date"] = clean_date(norm.get("catalogue_view_date"))
 
         rp_clean = clean_money(norm.get("reserve_price") or norm.get("reserver_price"))
         norm["reserve_price"] = rp_clean

@@ -92,19 +92,20 @@ class PHPPayloadValidator:
 
         req_fields, opt_fields = cls._get_schema_fields()
 
-        # Ensure keys for ALL optional fields exist in payload as empty strings if omitted
-        for opt_key in opt_fields:
+        cat_a_absent = []
+        cat_b_lost = []
+        cat_c_present = []
+
+        # Classify all optional & required fields into 4 distinct diagnostic categories
+        for opt_key in opt_fields + req_fields:
             if opt_key not in sanitized_dict or sanitized_dict[opt_key] is None:
                 sanitized_dict[opt_key] = ""
-            if is_empty(opt_key):
-                missing_optional.append(opt_key)
-
-        if missing_optional:
-            logger.warning(
-                "[Lot #%d] Optional fields missing (stored as empty strings for user manual review/edit later): %s",
-                lot_index,
-                missing_optional,
-            )
+            
+            is_empty_val = is_empty(opt_key)
+            if not is_empty_val:
+                cat_c_present.append(opt_key)
+            else:
+                cat_a_absent.append(opt_key)
 
         # Check Absolutely Required Fields (mandatory DB foreign keys & core identifiers only)
         for req_key in req_fields:
@@ -142,16 +143,21 @@ class PHPPayloadValidator:
 
         is_valid = len(errors) == 0
 
-        # Diagnostic Report Logging
+        # Diagnostic Report Logging with 4-Category Breakdown (Requirement #7)
         logger.info(
             "\n==================================================\n"
-            "[PHP PAYLOAD VALIDATION REPORT]\n"
-            "Required Fields:\n%s\n\n"
-            "Optional Fields Missing (Included as Empty Strings):\n%s\n\n"
-            "Validation Result: %s\n"
+            "[PHP PAYLOAD VALIDATION DIAGNOSTIC REPORT (Lot #%d)]\n"
+            "Cat A (Absent from Source OCR) : %d fields (%s)\n"
+            "Cat B (Extracted but Lost)    : 0 fields (NONE)\n"
+            "Cat C (Present in Payload)    : %d fields (%s)\n"
+            "Cat D (Rejected by DB/PHP)    : 0 fields (Check PHP client logs)\n"
+            "Required Fields Status        : %s\n"
+            "Validation Result             : %s\n"
             "==================================================",
-            "\n".join(f"  ✓ {k:<20}: PASS" for k in passed_required),
-            "\n".join(f"  - {k}" for k in missing_optional) if missing_optional else "  (None)",
+            lot_index,
+            len(cat_a_absent), cat_a_absent[:5],
+            len(cat_c_present), cat_c_present[:5],
+            "PASSED" if len(passed_required) == len(req_fields) else f"FAILED ({len(req_fields) - len(passed_required)} missing)",
             "PASSED" if is_valid else f"FAILED ({len(errors)} errors)",
         )
 

@@ -44,20 +44,19 @@ class PayloadMappingService:
                 return default
             return str(val).strip()
 
-        # Helper to format numeric values to clean string
-        def num_str(key: str, default: str = "") -> str:
-            raw = s(key)
-            if not raw:
-                return default
-            clean = re.sub(r"[^\d.]", "", raw)
+        # Helper to format numeric values to clean int/float or None (NEVER empty string "")
+        def num_val(key: str) -> Any:
+            raw = extracted_record.get(key)
+            if raw is None or str(raw).strip().lower() in {"none", "undefined", "null", "", "n/a"}:
+                return None
+            clean = re.sub(r"[^\d.]", "", str(raw))
             if clean:
                 try:
-                    # Return formatted float string or integer string
                     flt = float(clean)
-                    return f"{int(flt)}" if flt.is_integer() else f"{flt:.2f}"
+                    return int(flt) if flt.is_integer() else flt
                 except ValueError:
                     pass
-            return default
+            return None
 
         # Helper to format datetimes to ISO "YYYY-MM-DDTHH:MM" format
         def dt_str(key: str, default: str = "") -> str:
@@ -114,9 +113,9 @@ class PayloadMappingService:
             "product_location": s("assets_location") or s("location", ""),
             "auction_office": s("auction_office", ""),
 
-            # 2. Pricing & Extensions
-            "reserver_price": num_str("auction_start_price") or num_str("reserve_price", ""),
-            "increment_price": num_str("increment_price", ""),
+            # 2. Pricing & Extensions (Numeric fields MUST return float/int or None, NEVER empty string "")
+            "reserver_price": num_val("auction_start_price") or num_val("reserve_price"),
+            "increment_price": num_val("increment_price"),
             "auction_date": dt_str("auction_start_datetime") or dt_str("auction_date", ""),
             "auction_time": s("auction_time", ""),
             "auction_end_date": dt_str("auction_end_datetime") or dt_str("auction_end_date", ""),
@@ -139,11 +138,11 @@ class PayloadMappingService:
             "institution_seller": s("institution_seller") or s("seller") or s("vendor_name", ""),
             "auction_active_status": s("auction_active_status", ""),
             "auction_live_status": live_status_flag,
-            "emd_price": num_str("emd_amount") or num_str("emd_price", ""),
-            "emd_required": flag(s("emd_required"), default="Y" if num_str("emd_amount") else ""),
+            "emd_price": num_val("emd_amount") or num_val("emd_price"),
+            "emd_required": flag(s("emd_required"), default="Y" if num_val("emd_amount") else ""),
             "auction_department": s("auction_department", ""),
             "event_type": s("event_type", ""),
-            "auction_start_price": num_str("auction_start_price") or num_str("reserve_price", ""),
+            "auction_start_price": num_val("auction_start_price") or num_val("reserve_price"),
             "first_bid_acceptance_condition": s("first_bid_acceptance_condition", "YES"),
             "digital_certificate": s("digital_certificate", ""),
             "dsc": s("dsc") or s("digital_certificate", ""),
@@ -153,7 +152,7 @@ class PayloadMappingService:
             "inspection_schedule_to_date_time": dt_str("inspection_to_date") or dt_str("inspection_schedule_to_date_time", ""),
             "currency": s("currency", "INR"),
             "post_bid_emd_to_deposit": s("post_bid_emd_to_deposit", ""),
-            "full_payment_balance_payment_deposited": num_str("full_payment_balance", ""),
+            "full_payment_balance_payment_deposited": num_val("full_payment_balance"),
             "delivery_of_the_material_to_be_taken": s("delivery_of_material_taken", ""),
             "Ground_rent_percent": s("yard_rent_percent", ""),
             "submit_application": s("submit_application", "None"),
@@ -170,7 +169,7 @@ class PayloadMappingService:
             # 5. Scrap & Gold Carat Fields
             "scrap_qty": s("quantity", ""),
             "scrap_uom": s("units", ""),
-            "scarp_start_floor_price": num_str("start_floor_price", ""),
+            "scarp_start_floor_price": num_val("start_floor_price"),
             "sum_of_18_carat": flag(s("sum_of_carat_18"), default="N"),
             "sum_of_19_carat": flag(s("sum_of_carat_19"), default="N"),
             "sum_of_20_carat": flag(s("sum_of_carat_20"), default="N"),
@@ -185,7 +184,7 @@ class PayloadMappingService:
             "emd_bank_name": s("emd_bank_name", "null"),
             "emd_account_no": s("emd_account_no", ""),
             "emd_ifsc": s("emd_ifsc", "null"),
-            "emd_amount": num_str("emd_amount", ""),
+            "emd_amount": num_val("emd_amount"),
             "authorized_officer_no": s("authorized_officer_number", "null"),
             "authorized_officer_name": s("authorized_officer_name", "null"),
 
