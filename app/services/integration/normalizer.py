@@ -463,7 +463,7 @@ class DataNormalizer:
             return default
 
         # Apply normalizations
-        norm["auction_number"] = clean_str(norm.get("auction_number"))
+        norm["auction_number"] = clean_str(norm.get("auction_number")) or str(lot_index).zfill(2)
         norm["auction_date"] = clean_date(norm.get("auction_date") or (str(norm.get("auction_start_datetime")).split()[0] if norm.get("auction_start_datetime") else ""))
         norm["p_auction_date"] = norm["auction_date"]
         norm["auction_start_datetime"] = clean_datetime(norm.get("auction_start_datetime") or norm.get("auction_date_time"))

@@ -63,6 +63,10 @@ def sanitize_json_payload(data: Any) -> Any:
     """
     if data is None:
         return None
+    if hasattr(data, "__table__"):
+        data = {c.key: getattr(data, c.key) for c in data.__table__.columns}
+    elif hasattr(data, "__dict__") and not isinstance(data, (dict, list, str, int, float, bool)):
+        data = {k: v for k, v in data.__dict__.items() if not k.startswith("_")}
     if isinstance(data, dict):
         cleaned_dict = {}
         for k, v in data.items():

@@ -214,13 +214,7 @@ def build_pipeline_response(result: dict) -> dict:
                 if v and not common_extract.get(k):
                     common_extract[k] = v
         
-        if flat_raw_extracts:
-            for item in flat_raw_extracts:
-                if isinstance(item, dict):
-                    cand = CommonAISchemaBuilder.build_schema(item)
-                    for k, v in cand.items():
-                        if v and not common_extract.get(k):
-                            common_extract[k] = v
+
 
         # Build clean records mapping dict
         record_dict = {field: None for field in schema_fields}
@@ -326,8 +320,8 @@ def build_pipeline_response(result: dict) -> dict:
                 return clean_location_str(val)
             return None
 
-        raw_loc = db_dict.get("assets_location") or db_dict.get("location") or common_extract.get("asset_location") or None
-        record_dict["assets_location"] = normalize_location_obj(raw_loc)
+        raw_loc = db_dict.get("assets_location") or db_dict.get("location") or db_dict.get("property_address") or db_dict.get("product_location") or common_extract.get("asset_location") or common_extract.get("description") or None
+        record_dict["assets_location"] = normalize_location_obj(raw_loc) or (str(db_dict.get("property_address") or db_dict.get("auction_description") or "")[:200] if (db_dict.get("property_address") or db_dict.get("auction_description")) else None)
 
         # Notice bank details and branch office department mapping
         bank_val = db_dict.get("institution_seller") or common_extract.get("seller_name") or None

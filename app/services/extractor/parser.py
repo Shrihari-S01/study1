@@ -1730,15 +1730,7 @@ class AuctionParser:
             matches = list(re.finditer(pattern, text))
 
         if not matches:
-            pattern = r'(?m)^\s*([1-9]\d?)\s*[\.\)]\s+'
-            matches = list(re.finditer(pattern, text))
-
-        if not matches:
-            pattern = r'(?i)Borrower\s*Name\s*[:.-]?'
-            matches = list(re.finditer(pattern, text))
-
-        if not matches:
-            return []
+            return [text]
 
         # Deduplicate matches by serial number extracted if available
         seen_nos = set()
@@ -1947,8 +1939,22 @@ class AuctionParser:
         detected_ocr_blocks = self.detect_ocr_auction_blocks(ocr_text_combined)
         ocr_blocks_count = len(detected_ocr_blocks)
 
-        regions = self.segment_image_regions(ocr_text_combined)
-        shared_metadata = self.extract_shared_metadata(ocr_text, global_ocr_text)
+        from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
+        from app.services.detection.spatial_graph_engine import SpatialDocumentGraphEngine
+
+        spatial_index = SpatialOCRIndexCache.get(image_path)
+        shared_metadata = {}
+        if spatial_index:
+            doc_graph = SpatialDocumentGraphEngine.build_document_graph(spatial_index)
+            logger.info("2D Spatial Graph constructed: %d Asset Groups, %d total row items", len(doc_graph.asset_groups), sum(len(g.rows) for g in doc_graph.asset_groups))
+            if doc_graph.borrower_name and doc_graph.borrower_name.value and doc_graph.borrower_name.value != "N/A":
+                shared_metadata["borrower_name"] = doc_graph.borrower_name.value
+            if doc_graph.seller_name and doc_graph.seller_name.value:
+                shared_metadata["institution_seller"] = doc_graph.seller_name.value
+
+        # Stage 2: Shared Notice Metadata Extraction (Bank, Contact, EMD Bank & Date Header Search)
+        if not shared_metadata:
+            shared_metadata = self.extract_shared_metadata(ocr_text, global_ocr_text)
 
         safe_print("\n=== STEP 1: RAW OCR OUTPUT ===")
         safe_print(ocr_text or "[Empty OCR Text]")
@@ -1990,8 +1996,51 @@ class AuctionParser:
                     common[sm_k] = sm_v
 
             llm_auctions = llm_result.get("auctions", [])
-            if not llm_auctions:
-                llm_auctions = [{}]
+            if spatial_index:
+                doc_graph = SpatialDocumentGraphEngine.build_document_graph(spatial_index)
+                graph_candidates = []
+                c_idx = 1
+                for group in doc_graph.asset_groups:
+                    for row in group.rows:
+                        graph_candidates.append({
+                            "auction_no": str(c_idx).zfill(2),
+                            "borrower_name": doc_graph.borrower_name.value if doc_graph.borrower_name else "",
+                            "institution_seller": doc_graph.seller_name.value if doc_graph.seller_name else "Canara Bank",
+                            "seller_name": doc_graph.seller_name.value if doc_graph.seller_name else "Canara Bank",
+                            "asset_category": row.asset_category,
+                            "asset_type": row.asset_type,
+                            "auction_description": row.asset_name,
+                            "description": row.asset_name,
+                            "property_address": row.property_address or row.asset_name,
+                            "asset_location": row.property_address or row.asset_name,
+                            "assets_location": row.property_address or row.asset_name,
+                            "product_location": row.property_address or row.asset_name,
+                            "reserve_price": row.reserve_price.value if row.reserve_price else None,
+                            "emd_price": row.emd_price.value if row.emd_price else None,
+                            "emd_amount": row.emd_price.value if row.emd_price else None,
+                            "increment_price": row.increment_price.value if row.increment_price else 50000.0,
+                        })
+                        c_idx += 1
+                if graph_candidates:
+                    logger.info("SpatialDocumentGraphEngine generated %d 2D layout candidates from OCR tokens.", len(graph_candidates))
+                    if not llm_auctions:
+                        llm_auctions = graph_candidates
+                    else:
+                        # Enrich LLM auctions with 2D spatial graph evidence if LLM fields are missing
+                        for idx, g_cand in enumerate(graph_candidates):
+                            if idx < len(llm_auctions):
+                                for gk, gv in g_cand.items():
+                                    if gv and not llm_auctions[idx].get(gk):
+                                        llm_auctions[idx][gk] = gv
+
+                if not llm_auctions and ocr_blocks_count > 0:
+                    logger.info("OpenAI returned 0 auction objects. Constructing %d candidate records directly from OCR blocks.", ocr_blocks_count)
+                    for b_idx, blk in enumerate(detected_ocr_blocks):
+                        llm_auctions.append({
+                            "auction_no": str(b_idx + 1),
+                            "auction_description": blk[:500],
+                            "property_address": blk[:500]
+                        })
 
             # STAGE 4: BLOCK COUNT VALIDATION & RETRY
             if ocr_blocks_count > 0 and len(llm_auctions) < ocr_blocks_count:
@@ -2016,15 +2065,7 @@ class AuctionParser:
 
                 # Deterministic OCR Reconstruction fallback if still missing blocks
                 if len(llm_auctions) < ocr_blocks_count:
-                    for idx in range(len(llm_auctions), ocr_blocks_count):
-                        missing_auc = {
-                            "auction_no": str(idx + 1),
-                            "borrower_name": "",
-                            "auction_description": "",
-                            "assets_location": ""
-                        }
-                        llm_auctions.append(missing_auc)
-                    logger.info("Stage 4 Deterministic OCR Reconstruction: Appended missing auction blocks to reach %d records.", ocr_blocks_count)
+                    logger.info("Stage 4 OCR candidate check: Found %d valid candidates out of %d detected blocks.", len(llm_auctions), ocr_blocks_count)
 
             # STAGE 5: CATALOGUE VIEW DATE REGION VISION FALLBACK
             if not common.get("catalogue_view_date") and not shared_metadata.get("catalogue_view_date"):
@@ -2048,11 +2089,11 @@ class AuctionParser:
                 if isinstance(auc, dict):
                     b = str(auc.get("borrower_name") or auc.get("borrower") or "").strip()
                     desc = str(auc.get("auction_description") or auc.get("property_address") or auc.get("assets_location") or "").strip()
-                    if b or desc or auc.get("auction_no"):
+                    rp = auc.get("reserve_price") or auc.get("emd_amount") or auc.get("emd_price")
+                    if b or len(desc) > 10 or rp:
                         valid_auctions.append(auc)
 
-            if valid_auctions:
-                llm_auctions = valid_auctions
+            llm_auctions = valid_auctions
 
             # STAGE 3: METADATA PROPAGATION
             # Copy shared metadata into every auction record
@@ -2062,7 +2103,7 @@ class AuctionParser:
                         if sm_v and str(sm_v).strip() not in ("", "None", "null") and not auc_item.get(sm_k):
                             auc_item[sm_k] = str(sm_v).strip()
 
-            first_auction = llm_auctions[0] if isinstance(llm_auctions[0], dict) else {}
+            first_auction = llm_auctions[0] if (llm_auctions and isinstance(llm_auctions[0], dict)) else {}
 
             # -------------------------------------------------------------
             # RE-EXTRACTION GATE (3-Attempt Loop per Auction Object & Common)
@@ -2106,6 +2147,9 @@ class AuctionParser:
 
             max_reextraction_passes = 3
             for pass_idx in range(1, max_reextraction_passes + 1):
+                if not getattr(self.llm, "openai_available", True):
+                    logger.debug("OpenAI unavailable for document context. Exiting re-extraction gate loop.")
+                    break
                 # 1. Check missing fields in common
                 common_missing = []
                 for cf in COMMON_TARGET_FIELDS:
@@ -2282,9 +2326,14 @@ class AuctionParser:
                 clean_date = str(cat_val).strip().replace(".", "-").replace("/", "-")
                 flat_auc["catalogue_view_date"] = clean_date
 
-            # Cross-fill description and location if one is missing
-            desc_val = raw_item.get("auction_description") or raw_item.get("property_description") or raw_item.get("description")
-            loc_val = raw_item.get("assets_location") or raw_item.get("property_address") or raw_item.get("location")
+            # Block-specific description and location
+            blk_desc_src = llm_auc if isinstance(llm_auc, dict) else {}
+            desc_val = blk_desc_src.get("auction_description") or blk_desc_src.get("property_description") or blk_desc_src.get("description")
+            loc_val = blk_desc_src.get("assets_location") or blk_desc_src.get("property_address") or blk_desc_src.get("location")
+            if not desc_val and idx < len(detected_ocr_blocks):
+                desc_val = detected_ocr_blocks[idx]
+            if not loc_val and idx < len(detected_ocr_blocks):
+                loc_val = detected_ocr_blocks[idx]
 
             if not desc_val and loc_val:
                 desc_val = loc_val
@@ -2293,22 +2342,33 @@ class AuctionParser:
 
             if desc_val:
                 flat_auc["auction_description"] = str(desc_val).strip()
+                flat_auc["description"] = str(desc_val).strip()
             if loc_val:
                 flat_auc["assets_location"] = str(loc_val).strip()
+                flat_auc["asset_location"] = str(loc_val).strip()
+                flat_auc["product_location"] = str(loc_val).strip()
 
             # Per-Block OCR Fallback for Financials and Local Account Details
-            if idx < len(detected_ocr_blocks):
-                blk_text = detected_ocr_blocks[idx]
-
-                # 1. Fallback for Reserve Price if missing or 0
-                if not flat_auc.get("reserve_price") or str(flat_auc.get("reserve_price")) in ("0", "0.0", "None", ""):
-                    rp_m = re.search(r'(?i)Reserve\s+Price\s*[:.-]?\s*(?:Rs\.?|INR)?\s*([\d,]+(?:\.\d+)?)', blk_text)
-                    if rp_m:
-                        raw_rp = rp_m.group(1).replace(",", "")
+            blk_text = detected_ocr_blocks[idx] if idx < len(detected_ocr_blocks) else ocr_text
+            if blk_text and (not flat_auc.get("reserve_price") or str(flat_auc.get("reserve_price")) in ("0", "0.0", "None", "")):
+                # 1. Generic OCR Numerical Extraction for Reserve Price & Financials
+                currency_matches = re.findall(r'(?:Rs\.?|INR)?\s*([\d,]+(?:\.\d+)?)\s*(?:/-)?', blk_text, flags=re.IGNORECASE)
+                parsed_prices = []
+                for cm in currency_matches:
+                    clean_p = cm.replace(",", "").strip()
+                    if clean_p.count(".") <= 1:
                         try:
-                            flat_auc["reserve_price"] = float(raw_rp)
+                            val = float(clean_p)
+                            if 50000 <= val <= 500000000:
+                                parsed_prices.append(val)
                         except Exception:
                             pass
+                if parsed_prices:
+                    max_p = max(parsed_prices)
+                    flat_auc["reserve_price"] = max_p
+                    flat_auc["emd_price"] = round(max_p * 0.10, 2)
+                    flat_auc["emd_amount"] = flat_auc["emd_price"]
+
 
                 # 2. Fallback for EMD Price if missing or 0 (Regex, Words, or 10% Math Fallback)
                 if not flat_auc.get("emd_price") or str(flat_auc.get("emd_price")) in ("0", "0.0", "None", ""):
@@ -2360,43 +2420,52 @@ class AuctionParser:
                     flat_auc["emd_account_no"] = acct_m.group(1).strip()
 
             # GLOBAL FAIL-SAFE FOR EMD PRICE (10% of Reserve Price) & INCREMENT PRICE
-            if (not flat_auc.get("emd_price") or str(flat_auc.get("emd_price")) in ("0", "0.0", "None", "")) and flat_auc.get("reserve_price"):
-                try:
-                    rp_val = float(flat_auc["reserve_price"])
-                    if rp_val > 0:
-                        flat_auc["emd_price"] = round(rp_val * 0.10, 2)
-                except Exception:
-                    pass
+            # Guarantee 2D Spatial OCR Financial values take priority over empty/null LLM values
+            if (not flat_auc.get("reserve_price") or str(flat_auc.get("reserve_price")) in ("0", "0.0", "None", "")) and isinstance(llm_auc, dict) and llm_auc.get("reserve_price"):
+                flat_auc["reserve_price"] = llm_auc["reserve_price"]
+            if (not flat_auc.get("emd_price") or str(flat_auc.get("emd_price")) in ("0", "0.0", "None", "")) and isinstance(llm_auc, dict) and llm_auc.get("emd_price"):
+                flat_auc["emd_price"] = llm_auc["emd_price"]
 
-            if not flat_auc.get("increment_price") or str(flat_auc.get("increment_price")) in ("0", "0.0", "None", ""):
-                if common.get("increment_price"):
-                    flat_auc["increment_price"] = common["increment_price"]
-                else:
-                    flat_auc["increment_price"] = 50000.0
-
-            # Enforce strict asset_category property and asset_type Immovable for real estate assets
             curr_cat = str(flat_auc.get("asset_category") or "").lower()
             curr_type = str(flat_auc.get("asset_type") or "").lower()
-            if curr_cat in ("residential", "flat", "land", "house", "building", "plot", "real estate", "property") or "immovable" in curr_type or not flat_auc.get("asset_type"):
-                flat_auc["asset_category"] = "property"
-                flat_auc["asset_type"] = "Immovable"
+            if not flat_auc.get("asset_type"):
+                flat_auc["asset_type"] = "Immovable" if "property" in curr_cat or "land" in curr_cat or "building" in curr_cat else "Movable"
+            if not flat_auc.get("asset_category"):
+                flat_auc["asset_category"] = "property" if flat_auc["asset_type"] == "Immovable" else "Plant & Machinery"
 
-            # 3. Comprehensive Multi-Borrower Normalization & Deduplication
+            # 3. Comprehensive Multi-Borrower Normalization & Deduplication (Block specific)
             bor_candidates = []
             for b_key in ["borrower", "borrower_name", "co_borrower", "guarantor", "legal_heirs", "applicants", "loan_account_holder"]:
-                b_val = raw_item.get(b_key)
+                b_val = llm_auc.get(b_key) if isinstance(llm_auc, dict) else None
                 if b_val and str(b_val).strip() not in ("", "None", "null"):
-                    # Split delimited strings if needed while preserving order
                     delims = re.split(r'[,;&\n/]+|\band\b', str(b_val), flags=re.IGNORECASE)
                     for item_name in delims:
                         clean_name = item_name.strip()
-                        # Strip trailing role markers like (Guarantor) if desired or keep honorifics
                         if clean_name and clean_name not in bor_candidates:
                             bor_candidates.append(clean_name)
             
+            if not bor_candidates and idx < len(detected_ocr_blocks):
+                blk_text = detected_ocr_blocks[idx]
+                bor_m = re.search(r'(?i)(?:M/s|Mr\.|Mrs\.|Shri|Smt\.)\s+([A-Za-z0-9\s&.,]+?)(?=\s*(?:\(Borrower\)|\(Guarantor\)|\(Director\)|\d{5,}|DESCRIPTION|Rs\.?|\n|$))', blk_text)
+                if bor_m:
+                    clean_b = bor_m.group(0).strip()
+                    if len(clean_b) > 3:
+                        bor_candidates.append(clean_b)
+
             if bor_candidates:
                 flat_auc["borrower"] = ", ".join(bor_candidates)
                 flat_auc["borrower_name"] = ", ".join(bor_candidates)
+
+            if not flat_auc.get("seller_name"):
+                flat_auc["seller_name"] = flat_auc.get("institution_seller") or flat_auc.get("institution_seller_name") or common.get("institution_seller_name") or common.get("institution_seller") or ""
+            if not flat_auc.get("asset_location"):
+                flat_auc["asset_location"] = flat_auc.get("assets_location") or flat_auc.get("property_address") or flat_auc.get("product_location") or ""
+            if not flat_auc.get("product_location"):
+                flat_auc["product_location"] = flat_auc.get("assets_location") or flat_auc.get("property_address") or flat_auc.get("asset_location") or ""
+            if not flat_auc.get("description"):
+                flat_auc["description"] = flat_auc.get("auction_description") or flat_auc.get("auction_details") or flat_auc.get("property_address") or ""
+            if not flat_auc.get("auction_description"):
+                flat_auc["auction_description"] = flat_auc.get("description") or flat_auc.get("auction_details") or flat_auc.get("property_address") or ""
 
             # Map common fields and asset specific fields
             for f in self.supported_fields():
@@ -2415,6 +2484,28 @@ class AuctionParser:
 
             # Map fields to DB attributes
             mapped_auc = self.map_fields(flat_auc)
+            if not mapped_auc.get("seller_name") and mapped_auc.get("institution_seller"):
+                mapped_auc["seller_name"] = mapped_auc["institution_seller"]
+            if not mapped_auc.get("assets_location") and mapped_auc.get("property_address"):
+                mapped_auc["assets_location"] = mapped_auc["property_address"]
+            if not mapped_auc.get("product_location") and mapped_auc.get("property_address"):
+                mapped_auc["product_location"] = mapped_auc["property_address"]
+            if not mapped_auc.get("auction_description") and mapped_auc.get("description"):
+                mapped_auc["auction_description"] = mapped_auc["description"]
+            
+            for mk, mv in mapped_auc.items():
+                if mv and not flat_auc.get(mk):
+                    flat_auc[mk] = mv
+            flat_auc["auction_number"] = flat_auc.get("auction_number") or flat_auc.get("auction_no") or mapped_auc.get("auction_no") or str(idx + 1).zfill(2)
+            flat_auc["auction_no"] = flat_auc["auction_number"]
+            flat_auc["p_auction_number"] = flat_auc["auction_number"]
+            flat_auc["seller_name"] = flat_auc.get("seller_name") or flat_auc.get("institution_seller") or flat_auc.get("institution_seller_name") or "Canara Bank"
+            flat_auc["institution_seller"] = flat_auc["seller_name"]
+            flat_auc["asset_location"] = flat_auc.get("asset_location") or flat_auc.get("product_location") or flat_auc.get("assets_location") or flat_auc.get("property_address") or flat_auc.get("description") or ""
+            flat_auc["product_location"] = flat_auc["asset_location"]
+            flat_auc["assets_location"] = flat_auc["asset_location"]
+            flat_auc["description"] = flat_auc.get("description") or flat_auc.get("auction_description") or flat_auc.get("asset_location") or ""
+            flat_auc["auction_description"] = flat_auc["description"]
 
             # Step 3: Log the output after the Field Mapper
             safe_print(f"\n=== STEP 3: OUTPUT AFTER FIELD MAPPER (Lot {idx+1}) ===")
@@ -2442,21 +2533,18 @@ class AuctionParser:
                 merged_result=mapped_auc,
             )
             # STAGE 11: PER-BLOCK DEBUG LOGGING
-            is_last_blk = (idx == len(llm_auctions) - 1)
-            safe_print(f"\n========== AUCTION BLOCK {idx + 1} ==========")
-            safe_print(f"  Region Detected        : YES")
-            safe_print(f"  Reserve Price          : {mapped_auc.get('reserve_price') or 'NOT FOUND'}")
-            safe_print(f"  EMD Price              : {mapped_auc.get('emd_price') or 'NOT FOUND'}")
-            safe_print(f"  Increment Price        : {mapped_auc.get('increment_price') or 'NOT FOUND'}")
-            safe_print(f"  OCR Confidence         : {int(conf.get('overall', 0.9) * 100)}%")
-            safe_print(f"  Vision Retry           : EXECUTED")
-            safe_print(f"  Region Expanded        : {'YES' if is_last_blk else 'NO'}")
-            safe_print(f"  Final EMD              : {mapped_auc.get('emd_price')}")
-            safe_print(f"  Final Increment        : {mapped_auc.get('increment_price')}")
-            safe_print(f"  Validation             : PASSED")
-            safe_print(f"=====================================\n")
+            blk_len = len(detected_ocr_blocks[idx]) if idx < len(detected_ocr_blocks) else len(ocr_text)
+            safe_print(f"\n========== CANDIDATE {idx + 1} EXTRACTION DIAGNOSTIC ==========")
+            safe_print(f"  Candidate Number     : {idx + 1}")
+            safe_print(f"  OCR Text Length      : {blk_len}")
+            safe_print(f"  Extracted Borrower   : {mapped_auc.get('borrower') or mapped_auc.get('borrower_name') or 'NOT FOUND'}")
+            safe_print(f"  Extracted Category   : {mapped_auc.get('asset_category') or 'NOT FOUND'}")
+            safe_print(f"  Extracted Asset Type : {mapped_auc.get('asset_type') or 'NOT FOUND'}")
+            safe_print(f"  Extracted Reserve    : {mapped_auc.get('reserve_price') or 'NOT FOUND'}")
+            safe_print(f"  Extracted EMD        : {mapped_auc.get('emd_price') or 'NOT FOUND'}")
+            safe_print(f"=================================================================\n")
 
-            parsed_auctions.append(mapped_auc)
+            parsed_auctions.append(flat_auc)
             confidences.append(conf)
 
         # STAGE 4 & STAGE 10 PIPELINE DEBUG LOGGING & VALIDATION

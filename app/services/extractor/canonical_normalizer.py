@@ -113,6 +113,13 @@ class CanonicalAliasNormalizer:
                         return val
             return ""
 
+        # 0. Auction Number Aliases
+        auc_num = first_non_empty("auction_number", "p_auction_number", "auction_no", "notice_auction_id", "auction_id")
+        if auc_num:
+            norm["auction_number"] = auc_num
+            norm["p_auction_number"] = auc_num
+            norm["auction_no"] = auc_num
+
         # 1. Reserve Price Aliases (Do NOT map into auction_start_price)
         rp = first_non_empty_monetary(
             "reserve_price", "reserver_price", "reserve_amount", "reserve_rate", "upset_price", "base_price"

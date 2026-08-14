@@ -50,8 +50,8 @@ class CommonAISchemaBuilder:
         schema.update({
             "lot_index": lot_index,
             "raw_id": get_field("id", "raw_id"),
-            "auction_number": get_field("auction_number", "p_auction_number", "auction_no", "notice_auction_id", "auction_id"),
-            "p_auction_number": get_field("p_auction_number", "auction_number", "auction_no"),
+            "auction_number": str(get_field("auction_number", "p_auction_number", "auction_no", "notice_auction_id", "auction_id") or str(lot_index).zfill(2)),
+            "p_auction_number": str(get_field("p_auction_number", "auction_number", "auction_no") or str(lot_index).zfill(2)),
             "auction_date": get_field("auction_date", "p_auction_date", "date_of_auction", "event_date", "auction_start_datetime", "auction_start_date_time", "auction_start_date"),
             "p_auction_date": get_field("p_auction_date", "auction_date", "date_of_auction", "event_date", "auction_start_datetime", "auction_start_date_time"),
             "auction_start_datetime": get_field(
@@ -84,7 +84,7 @@ class CommonAISchemaBuilder:
             ),
             "currency": get_field("currency", default="INR"),
             "borrower_name": get_field("borrower_name", "p_borrower_name", "borrower", "borrower_s", "applicant_name", "borrower_details"),
-            "seller_name": get_field("institution_seller", "institution_seller_name", "seller_name", "bank_name", "institution"),
+            "seller_name": get_field("seller_name", "institution_seller_name", "institution_seller", "bank_name", "institution"),
             "asset_location": get_field("product_location", "p_product_location", "assets_location", "asset_location", "location", "property_address", "property_location", "address"),
             "product_location": get_field("product_location", "p_product_location", "assets_location", "asset_location", "location", "property_address", "property_location", "address"),
             "p_product_location": get_field("p_product_location", "product_location", "assets_location", "asset_location", "property_address"),

@@ -80,7 +80,7 @@ class UploadOrchestrationService:
 
         # 1. Auction Number
         if not payload.get("auction_number"):
-            payload["auction_number"] = str(payload.get("auction_no") or payload.get("auction_id") or payload.get("raw_id") or "01")
+            payload["auction_number"] = str(payload.get("auction_no") or payload.get("auction_id") or payload.get("raw_id") or "")
 
         # 2. Auction Date
         if not payload.get("auction_date"):
@@ -229,8 +229,22 @@ class UploadOrchestrationService:
 
         # AI Extraction Engine
         raw_extracted_records, doc_type = await self._run_ai_extraction(file, processing_id, start_time, file_name)
-        if not raw_extracted_records and isinstance(doc_type, DocumentProcessingResponse):
-            return doc_type
+        if not raw_extracted_records:
+            if isinstance(doc_type, DocumentProcessingResponse):
+                return doc_type
+            return DocumentProcessingResponse(
+                success=False,
+                stage="EXTRACTION_FAILED",
+                processing_id=processing_id,
+                file_name=file_name,
+                document_type=doc_type or "IMAGE",
+                processing_time_seconds=round(time.time() - start_time, 2),
+                summary={"total_records": 0, "extracted_records": 0, "validation_failed": 1},
+                records=[],
+                processing_status="FAILED",
+                error_detail="No valid auction records could be extracted from the document.",
+                message=f"Document '{file_name}' processing failed: zero valid auction records extracted.",
+            )
 
         # Multi-Lot Iteration for Pure AI Document Processing
         extracted_auction_records: List[Dict[str, Any]] = []
@@ -332,7 +346,7 @@ class UploadOrchestrationService:
                 llm_dict=raw_record,
                 parser_dict=raw_record,
                 canonical_dict=norm_schema,
-                mapper_dict=unmerged_payload,
+                mapper_dict=norm_schema,
                 schema_dict=common_schema,
                 norm_dict=norm_schema,
                 php_dict=mapped_payload,
@@ -393,30 +407,23 @@ class UploadOrchestrationService:
         try:
             from app.repositories.auction_processing_session_repository import AuctionProcessingSessionRepository
             session_repo = AuctionProcessingSessionRepository(self.db)
+            from app.services.integration.payload_sanitizer import sanitize_json_payload
+            clean_raw_records = sanitize_json_payload(raw_extracted_records)
+            clean_common = sanitize_json_payload(common_schema) if 'common_schema' in locals() else clean_raw_records
+            clean_mapped = sanitize_json_payload(extracted_auction_records)
             await session_repo.create_session(
                 processing_id=processing_id,
                 file_name=file_name,
                 document_type=doc_type,
-                extracted_json=raw_extracted_records,
-                canonical_json=common_schema if 'common_schema' in locals() else raw_extracted_records,
-                mapped_payload=extracted_auction_records,
+                extracted_json=clean_raw_records,
+                canonical_json=clean_common,
+                mapped_payload=clean_mapped,
                 consistency_report=consistency_report.report_dict if 'consistency_report' in locals() else None,
                 status="READY_FOR_REVIEW",
             )
         except Exception as db_sess_err:
             err_msg = f"SESSION_SAVE_FAILED: Failed to persist extraction session to database table 'auction_processing_sessions': {str(db_sess_err)}"
             logger.error("[%s] %s", processing_id, err_msg)
-            return DocumentProcessingResponse(
-                success=False,
-                stage="SESSION_SAVE_FAILED",
-                processing_id=processing_id,
-                file_name=file_name,
-                document_type=doc_type,
-                processing_time_seconds=total_elapsed,
-                summary={"total_records": total_recs, "extracted_records": 0, "validation_failed": 1},
-                records=[],
-                message=err_msg,
-            )
 
         from app.services.integration.extraction_session_store import ExtractionSessionStore
         ExtractionSessionStore.save_session(processing_id, extracted_auction_records, file_name, doc_type)
@@ -424,13 +431,13 @@ class UploadOrchestrationService:
         # CHECKPOINT 1 Log in process_document (before return)
         logger.info("[%s] CHECKPOINT 1 - Canonical Extracted Records Output: %s", processing_id, json.dumps(extracted_auction_records, default=str))
 
-        has_critical_failure = validation_failed_count > 0 or succ_recs == 0
+        has_critical_failure = succ_recs == 0
         proc_status = "FAILED" if has_critical_failure else "SUCCESS"
-        err_det = f"Extraction validation failed for {validation_failed_count} record(s)." if validation_failed_count > 0 else ("0 records extracted from document." if succ_recs == 0 else "")
+        err_det = "0 records extracted from document." if succ_recs == 0 else f"Extraction complete. {validation_failed_count} record(s) marked for manual review."
 
         return DocumentProcessingResponse(
             success=not has_critical_failure,
-            stage="DOCUMENT_PROCESSED" if not has_critical_failure else "VALIDATION_FAILED",
+            stage="DOCUMENT_PROCESSED" if not has_critical_failure else "EXTRACTION_FAILED",
             processing_id=processing_id,
             file_name=file_name,
             document_type=doc_type,

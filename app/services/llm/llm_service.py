@@ -36,6 +36,7 @@ class LLMService:
         self.openai_model = settings.openai_model or "gpt-4.1-mini"
         self.temperature = 0.0
         self.max_tokens = 4096
+        self.openai_available = True
 
         self._gemini_instance = None
 
@@ -151,6 +152,10 @@ class LLMService:
         Fast Path: Send high-confidence OCR text to GPT-4.1-mini text completion without image payload.
         Cuts extraction latency by 50-80%.
         """
+        if not self.openai_available:
+            logger.debug("OpenAI unavailable for document context. Skipping text completion.")
+            return json.dumps(self.empty_record(), indent=4)
+
         if not ocr_text or not ocr_text.strip():
             return json.dumps(self.empty_record(), indent=4)
 
@@ -191,15 +196,19 @@ class LLMService:
                 "Authorization": f"Bearer {self.openai_key}",
                 "Connection": "close"
             }
-            response = self._post_with_retry(url, payload, headers, timeout=30, max_retries=3)
+            response = self._post_with_retry(url, payload, headers, timeout=30, max_retries=1)
+            if not response or response.status_code == 429 or response.status_code != 200:
+                self.openai_available = False
+                logger.debug("OpenAI text completion unavailable (status %s). Setting openai_available = False for document context.", getattr(response, "status_code", None))
+                return json.dumps(self.empty_record(), indent=4)
             try:
                 res_data = response.json()
                 content = res_data["choices"][0]["message"]["content"]
                 self._set_cached_response(cache_key, content)
                 return content
             except Exception as exc:
-                logger.exception("OpenAI Text API response parsing failed.")
-                raise RuntimeError(f"OpenAI Text Parse Error: {exc}") from exc
+                logger.debug("OpenAI Text API response parsing failed: %s", exc)
+                return json.dumps(self.empty_record(), indent=4)
 
         return json.dumps(self.empty_record(), indent=4)
 
@@ -278,6 +287,9 @@ class LLMService:
         Send base64 image directly to active LLM API and return structured JSON.
         """
         if self.provider == "openai":
+            if not self.openai_available:
+                logger.debug("OpenAI unavailable for document context. Skipping vision completion.")
+                return json.dumps(self.empty_record(), indent=4)
             # 1. Downscale base64 image payload in memory
             scaled_b64 = self._downscale_base64_image(base64_image, max_dim=1200)
 
@@ -381,7 +393,11 @@ class LLMService:
                 "Connection": "close"
             }
 
-            response = self._post_with_retry(url, payload, headers, timeout=120, max_retries=5)
+            response = self._post_with_retry(url, payload, headers, timeout=120, max_retries=1)
+            if not response or response.status_code == 429 or response.status_code != 200:
+                self.openai_available = False
+                logger.debug("OpenAI vision completion unavailable (status %s). Setting openai_available = False for document context.", getattr(response, "status_code", None))
+                return json.dumps(self.empty_record(), indent=4)
 
             try:
                 res_data = response.json()
@@ -390,8 +406,8 @@ class LLMService:
                 self._set_cached_response(cache_key, content)
                 return content
             except Exception as exc:
-                logger.exception("OpenAI API response parsing failed.")
-                raise RuntimeError(f"OpenAI Parse Error : {exc}") from exc
+                logger.debug("OpenAI API vision response parsing failed: %s", exc)
+                return json.dumps(self.empty_record(), indent=4)
 
         return self.gemini.vision_completion(base64_image, ocr_text)
 
@@ -420,10 +436,8 @@ class LLMService:
                 response = session.post(url, json=payload, headers=req_headers, timeout=timeout)
 
                 if response.status_code == 429:
-                    retry_after = 5 * attempt
-                    logger.warning("OpenAI API rate limit hit (429). Retrying in %d seconds (attempt %d/%d)...", retry_after, attempt, max_retries)
-                    time.sleep(retry_after)
-                    continue
+                    logger.debug("OpenAI enrichment unavailable (HTTP 429 rate limit); continuing with OCR extraction.")
+                    return response
 
                 if response.status_code >= 500:
                     logger.warning("OpenAI server error (%d). Retrying in %d seconds (attempt %d/%d)...", response.status_code, 3 * attempt, attempt, max_retries)
@@ -431,8 +445,8 @@ class LLMService:
                     continue
 
                 if response.status_code != 200:
-                    logger.error("OpenAI API request failed: %d - %s", response.status_code, response.text)
-                    raise RuntimeError(f"OpenAI API returned error status {response.status_code}: {response.text}")
+                    logger.debug("OpenAI API request non-200 status %d: %s", response.status_code, response.text)
+                    return response
 
                 return response
 
@@ -473,6 +487,9 @@ class LLMService:
             return {}
 
         if self.provider == "openai":
+            if not self.openai_available:
+                logger.debug("OpenAI unavailable for document context. Skipping targeted re-extraction.")
+                return {}
             logger.info(
                 "Calling OpenAI API for targeted per-object re-extraction. Common missing: %s, Auction objects missing: %s",
                 common_missing, len(auctions_missing)
@@ -533,12 +550,16 @@ class LLMService:
             }
 
             try:
-                response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=3)
+                response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=1)
+                if not response or response.status_code == 429 or response.status_code != 200:
+                    self.openai_available = False
+                    logger.debug("OpenAI targeted re-extraction unavailable (status %s). Setting openai_available = False for document context.", getattr(response, "status_code", None))
+                    return {}
                 res_data = response.json()
                 content = res_data["choices"][0]["message"]["content"]
                 return self.parse_json(content)
             except Exception as exc:
-                logger.warning("OpenAI targeted re-extraction failed: %s", exc)
+                logger.debug("OpenAI targeted re-extraction failed: %s", exc)
                 return {}
 
         return self.gemini.targeted_reextraction(
@@ -569,6 +590,9 @@ class LLMService:
         Extract structured data from text using active LLM.
         """
         if self.provider == "openai":
+            if not self.openai_available:
+                logger.debug("OpenAI unavailable for document context. Skipping text extract.")
+                return {}
             logger.info("Calling OpenAI API for text-based extraction.")
             url = "https://api.openai.com/v1/chat/completions"
 
@@ -613,15 +637,19 @@ class LLMService:
                 "Connection": "close"
             }
 
-            response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=4)
+            response = self._post_with_retry(url, payload, headers, timeout=60, max_retries=1)
+            if not response or response.status_code == 429 or response.status_code != 200:
+                self.openai_available = False
+                logger.debug("OpenAI text extract unavailable (status %s). Setting openai_available = False for document context.", getattr(response, "status_code", None))
+                return {}
 
             try:
                 res_data = response.json()
                 content = res_data["choices"][0]["message"]["content"]
                 return self.parse_json(content)
             except Exception as exc:
-                logger.exception("OpenAI API text response parsing failed.")
-                raise RuntimeError(f"OpenAI Parse Error : {exc}") from exc
+                logger.debug("OpenAI API text response parsing failed: %s", exc)
+                return {}
 
         return self.gemini.extract(text)
 

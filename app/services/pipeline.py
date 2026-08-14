@@ -535,10 +535,25 @@ class AuctionPipeline:
             retry_count += 1
             mandatory_missing = get_missing_mandatory(record_dict)
 
-        if isinstance(rec_fields, list) and len(rec_fields) > 0:
+        if isinstance(rec_fields, list) and len(rec_fields) > 0 and rec_fields[0]:
             rec_fields[0] = record_dict
-        else:
+        elif record_dict:
             rec_fields = [record_dict]
+        else:
+            rec_fields = []
+
+        if not rec_fields:
+            logger.info("Process notice completed with 0 extracted records from OCR.")
+            return {
+                "success": False,
+                "image": image_path,
+                "ocr_text": ocr_text,
+                "record": [],
+                "raw_llm": "{}",
+                "validation": {},
+                "confidence": {"overall": 0.0},
+                "statistics": {},
+            }
 
         # Structured block diagnostic report
         self._log_block_diagnostic(
@@ -826,12 +841,10 @@ class AuctionPipeline:
                         "Unable to save auction record."
                     )
 
+        upload_dict = {c.key: getattr(upload, c.key) for c in upload.__table__.columns} if hasattr(upload, "__table__") else upload
         return {
-
-            "upload": upload,
-
+            "upload": upload_dict,
             "records": saved_records,
-
         }
 
     async def process_file(
@@ -883,99 +896,59 @@ class AuctionPipeline:
         from app.core.logger import PipelineStageTimer
         from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
 
-        timer = PipelineStageTimer()
-        t0 = time.time()
-
-        # 1. Image Load & Bypass Check
-        t_sub = time.time()
+        # 1. Image Load & Preprocessing
         enhanced_path = await self.enhance_image(upload.original_file_path)
-        timer.record_stage("Image Preprocessing", time.time() - t_sub)
 
-        # 2. Single-Pass OCR & Spatial Index Construction
-        t_sub = time.time()
+        # 2. Extract OCR
         raw_ocr_lines = self.ocr.extract(enhanced_path)
+        from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
         spatial_index = SpatialOCRIndexCache.get(enhanced_path)
-        cached_ocr_text = spatial_index.get_full_text() if spatial_index else ""
-        timer.record_stage("Single-Pass OCR", time.time() - t_sub)
+        raw_ocr_data = spatial_index.words if spatial_index else raw_ocr_lines
 
-        # 3. Layout Detection & Split
-        t_sub = time.time()
-        images = await self.split_image(enhanced_path, upload.upload_number)
-        timer.record_stage("Region Detection", time.time() - t_sub)
+        # 3. Execute Strict 22-Step Debug-First Extraction Engine
+        from app.services.extractor.refactored_extraction_engine import StrictAuctionRefactorEngine
+        refactor_engine = StrictAuctionRefactorEngine()
+        extraction_res = refactor_engine.run_extraction(
+            raw_ocr_data=raw_ocr_data,
+            image_name=os.path.basename(enhanced_path),
+            openai_enricher=self.parser.llm
+        )
 
-        # 4. Shared Document Metadata Extraction (Pass 1 - Fast Path Text LLM)
-        t_sub = time.time()
-        shared_metadata = {}
-        try:
-            if cached_ocr_text:
-                raw_shared_str = self.parser.llm.text_completion(cached_ocr_text[:3000])
-                if isinstance(raw_shared_str, str):
-                    import json
-                    try:
-                        shared_metadata = json.loads(raw_shared_str)
-                    except Exception:
-                        shared_metadata = {}
-        except Exception as shared_err:
-            logger.warning("Shared metadata single-pass extraction failed: %s", shared_err)
-        timer.record_stage("Shared Metadata Pass", time.time() - t_sub)
+        extracted_records = extraction_res.get("records", [])
 
-        # 5. Dynamic Worker Pool & Async Semaphore Parallel Auction Extraction
-        t_sub = time.time()
-        num_blocks = len(images)
-        cpu_workers = os.cpu_count() or 4
-        max_workers = min(num_blocks, cpu_workers, 6) if num_blocks > 0 else 1
-        sem = asyncio.Semaphore(max_workers)
+        # 4. Save results to database
+        saved_records = []
+        for rec in extracted_records:
+            try:
+                rec["upload_id"] = upload.id
+                saved = await self.database.save_auction(rec)
+                saved_records.append(saved)
+            except Exception as save_err:
+                logger.exception("Unable to save extracted auction record: %s", save_err)
 
-        async def _extract_worker(image_item: dict | str) -> dict:
-            async with sem:
-                img_p = image_item["image_path"] if isinstance(image_item, dict) and "image_path" in image_item else image_item
-                bbox_meta = image_item if isinstance(image_item, dict) else None
-                try:
-                    res = await self.process_notice(img_p, original_file_path=upload.original_file_path, bbox_meta=bbox_meta)
-                    if res.get("success") and isinstance(res.get("record"), dict):
-                        # Merge shared document metadata into lot record
-                        if isinstance(shared_metadata, dict):
-                            for meta_k in ["institution_seller_name", "institution_seller", "auction_office", "auction_department", "catalogue_view_date", "remarks", "emd_bank_name"]:
-                                if not res["record"].get(meta_k) and shared_metadata.get(meta_k):
-                                    res["record"][meta_k] = shared_metadata[meta_k]
-                    return res
-                except Exception as lot_exc:
-                    logger.exception("Async lot extraction worker exception for image %s: %s", img_p, lot_exc)
-                    return {
-                        "success": False,
-                        "image": str(img_p),
-                        "message": f"Lot extraction task failed: {lot_exc}",
-                    }
+        summary = {
+            "total_notices": extraction_res.get("detected_candidates", len(saved_records)),
+            "successful": len(saved_records),
+            "failed": 0 if extraction_res.get("success") else 1
+        }
 
-        results = await asyncio.gather(*[_extract_worker(img) for img in images])
-        timer.record_stage("Parallel Lot Extraction", time.time() - t_sub)
+        # Update upload status
+        await self.upload_service.repository.update_status(upload=upload, status="COMPLETED" if extraction_res.get("success") else "FAILED")
+        await self.upload_service.repository.update_statistics(
+            upload=upload,
+            total_notices=summary["total_notices"],
+            successful_notices=summary["successful"],
+            failed_notices=summary["failed"],
+            processing_time=0.0,
+            confidence_score=0.95
+        )
 
-        # 6. Database Save & Profiling Summary Report
-        t_sub = time.time()
-        database = await self.save_results(upload, list(results))
-        timer.record_stage("Database Persistence", time.time() - t_sub)
-
-        # 7. Post-Processing Storage Cleanup
-        try:
-            split_file_paths = [
-                img["image_path"] if isinstance(img, dict) and "image_path" in img else img
-                for img in images
-            ]
-            processed_paths = [enhanced_path] if enhanced_path and enhanced_path != upload.original_file_path else []
-            self.file_manager.cleanup_post_processing(
-                split_paths=split_file_paths,
-                processed_paths=processed_paths,
-            )
-        except Exception as cleanup_err:
-            logger.warning("Post-processing file cleanup encountered error: %s", cleanup_err)
-
-        timer.generate_report(logger)
-
+        upload_dict = {c.key: getattr(upload, c.key) for c in upload.__table__.columns} if hasattr(upload, "__table__") else upload
         return {
-            "upload": database["upload"],
-            "results": database["records"],
-            "summary": self.extraction_summary(list(results)),
-            "performance_report": timer.generate_report(logger),
+            "upload": upload_dict,
+            "results": saved_records,
+            "summary": summary,
+            "extraction_results": [extraction_res]
         }
 
     async def process_image_path(
@@ -1093,9 +1066,7 @@ class AuctionPipeline:
                 "Pipeline completed."
             )
 
-            return self.build_response(
-                result,
-            )
+            return result
 
         except Exception as exc:
 

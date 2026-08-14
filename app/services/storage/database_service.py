@@ -406,9 +406,8 @@ class DatabaseService:
             logger.info("=== DEBUG LOG [2/3] Normalized DB Data ===")
             logger.info("%s", filtered_auction)
 
-            auction = Auction(**filtered_auction)
-
-        return await self.auction_repository.create(auction)
+            saved_obj = await self.auction_repository.create(Auction(**filtered_auction))
+            return filtered_auction
 
     async def get_upload(
         self,
