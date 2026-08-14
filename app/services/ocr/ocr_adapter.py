@@ -27,6 +27,10 @@ class OCRToken:
     line_id: Optional[int] = None
     region_id: Optional[int] = None
     auction_block_id: Optional[str] = None
+    column_id: int = 0
+    owner_auction_no: Optional[int] = None
+    owner_locked: bool = False
+    requires_resolution: bool = False
     source: str = "PaddleOCR"
 
 def safe_print(msg: str):

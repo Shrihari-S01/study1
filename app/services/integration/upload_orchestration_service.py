@@ -431,6 +431,10 @@ class UploadOrchestrationService:
         # CHECKPOINT 1 Log in process_document (before return)
         logger.info("[%s] CHECKPOINT 1 - Canonical Extracted Records Output: %s", processing_id, json.dumps(extracted_auction_records, default=str))
 
+        validation_failed_count = sum(
+            1 for rec in extracted_auction_records
+            if rec.get("needs_manual_review") is True or rec.get("record_status") == "PARTIAL" or rec.get("validation_passed") is False
+        )
         has_critical_failure = succ_recs == 0
         proc_status = "FAILED" if has_critical_failure else "SUCCESS"
         err_det = "0 records extracted from document." if succ_recs == 0 else f"Extraction complete. {validation_failed_count} record(s) marked for manual review."

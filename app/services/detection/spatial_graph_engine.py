@@ -341,10 +341,10 @@ class SpatialDocumentGraphEngine:
         full_ocr_text = spatial_index.get_full_text()
 
         bor_match = re.search(r'(?i)(?:Borrower|Name\s+of\s+Borrower|Mortgagor)?\s*[:.-]?\s*((?:M/s|Mr\.|Mrs\.|Shri|Smt\.|1\.\s*M/s)?\s*[A-Za-z0-9\s&.,]{5,60}?)(?=\s*(?:\(Borrower\)|\(Guarantor\)|\(Director\)|DESCRIPTION|Reg|Rs\.?|\n|$))', full_ocr_text)
-        bor_name = bor_match.group(1).strip() if bor_match and len(bor_match.group(1).strip()) > 3 else "Fineline Food And Beverages Private Limited"
+        bor_name = bor_match.group(1).strip() if bor_match and len(bor_match.group(1).strip()) > 3 else ""
 
-        seller_match = re.search(r'(?i)(Canara\s+Bank|Bank\s+of\s+Baroda|State\s+Bank\s+of\s+India|LIC\s+Housing|Indian\s+Bank|Punjab\s+National\s+Bank)', full_ocr_text)
-        seller_name = seller_match.group(1).strip() if seller_match else "Canara Bank"
+        seller_match = re.search(r'(?i)(Canara\s+Bank|Bank\s+of\s+Baroda|State\s+Bank\s+of\s+India|LIC\s+Housing|Indian\s+Bank|Punjab\s+National\s+Bank|Union\s+Bank|Axis\s+Bank|ICICI\s+Bank|HDFC\s+Bank)', full_ocr_text)
+        seller_name = seller_match.group(1).strip() if seller_match else ""
 
         return ParentAuctionEvent(
             event_id="evt-1",

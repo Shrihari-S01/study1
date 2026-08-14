@@ -283,11 +283,17 @@ class DataNormalizer:
                 # Ultimate safe fallback from raw segments
                 derived = ", ".join(raw_segments[-2:])
 
-        # Step 3: Validation, Normalization, & 100-character Enforcement
+        # Step 3: Validation, Normalization, & Non-Location Noise Filtering
         derived = re.sub(r"\s+", " ", derived).strip()
 
-        if not derived:
-            derived = full_address[:100].strip() if full_address else ""
+        # Reject if derived location contains legal disclaimers, borrower names, or non-location OCR noise
+        noise_location_kw = ["borrower", "notice", "description", "slno", "cpno", "guarantor", "loan", "mortgagor", "schedule", "item", "qty", "model"]
+        if derived and any(nk in derived.lower() for nk in noise_location_kw):
+            derived = ""
+
+        # Filter out truncated OCR fragments like "rict", "trict", "istrict"
+        if derived.lower() in {"rict", "trict", "istrict", "ct", "st"}:
+            derived = ""
 
         # Enforce max 100 characters without truncating in the middle of a word
         if len(derived) > 100:

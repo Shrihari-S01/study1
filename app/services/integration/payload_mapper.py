@@ -73,8 +73,12 @@ class PurePayloadMapper:
         derived_loc = DataNormalizer.derive_product_location(norm_schema)
 
         import re
-        def get_num(k1: str, k2: str = "", k3: str = "") -> Any:
-            val = norm_schema.get(k1) or (norm_schema.get(k2) if k2 else None) or (norm_schema.get(k3) if k3 else None)
+        def get_num(*keys: str) -> Any:
+            val = None
+            for k in keys:
+                if k and norm_schema.get(k) is not None and str(norm_schema.get(k)).strip() != "":
+                    val = norm_schema.get(k)
+                    break
             if val is None or str(val).strip() == "" or str(val).strip().lower() in {"none", "null", "n/a", "undefined"}:
                 return None
             try:
@@ -106,15 +110,18 @@ class PurePayloadMapper:
             "auction_department": str(norm_schema.get("auction_department") or ""),
 
             # 2. Pricing & Timelines (Numeric fields MUST return float/int or None, NEVER empty string "")
-            "reserver_price": get_num("reserve_price", "reserver_price", "p_reserver_price"),
-            "p_reserver_price": get_num("p_reserver_price", "reserver_price", "reserve_price"),
-            "reserve_price": get_num("reserve_price", "reserver_price", "p_reserver_price"),
-            "auction_start_price": get_num("reserve_price", "reserver_price", "auction_start_price"),
+            "reserver_price": get_num("reserve_price", "reserver_price", "p_reserver_price", "auction_start_price", "starting_price"),
+            "p_reserver_price": get_num("p_reserver_price", "reserver_price", "reserve_price", "auction_start_price", "starting_price"),
+            "reserve_price": get_num("reserve_price", "reserver_price", "p_reserver_price", "auction_start_price", "starting_price"),
+            "auction_start_price": get_num("auction_start_price", "starting_price", "reserve_price", "reserver_price"),
             "increment_price": get_num("increment_price", "bid_increment"),
             "bid_increment": get_num("increment_price", "bid_increment"),
             "emd_price": get_num("emd_amount", "emd_price", "pre_bid_emd"),
             "emd_amount": get_num("emd_amount", "emd_price", "pre_bid_emd"),
             "pre_bid_emd": get_num("emd_amount", "emd_price", "pre_bid_emd"),
+            "loan_number": str(norm_schema.get("loan_number") or norm_schema.get("loan_no") or norm_schema.get("loan_account_number") or ""),
+            "loan_no": str(norm_schema.get("loan_number") or norm_schema.get("loan_no") or norm_schema.get("loan_account_number") or ""),
+            "loan_account_number": str(norm_schema.get("loan_number") or norm_schema.get("loan_no") or norm_schema.get("loan_account_number") or ""),
 
             "auction_date": str(norm_schema.get("auction_date") or (str(norm_schema.get("auction_start_datetime")).split()[0] if norm_schema.get("auction_start_datetime") else "")),
             "p_auction_date": str(norm_schema.get("auction_date") or (str(norm_schema.get("auction_start_datetime")).split()[0] if norm_schema.get("auction_start_datetime") else "")),

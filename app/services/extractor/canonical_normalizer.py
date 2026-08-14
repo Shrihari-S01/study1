@@ -209,4 +209,11 @@ class CanonicalAliasNormalizer:
             norm["ifsc"] = ifsc_val
             norm["p_emd_ifsc"] = ifsc_val
 
+        # 9. Auction End Date Aliases
+        auc_end = first_non_empty("auction_end_datetime", "auction_end_date", "p_auction_end_date")
+        if auc_end:
+            norm["auction_end_datetime"] = auc_end
+            norm["auction_end_date"] = auc_end
+            norm["p_auction_end_date"] = auc_end
+
         return norm

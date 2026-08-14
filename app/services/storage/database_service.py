@@ -307,11 +307,6 @@ class DatabaseService:
             if not db_data.get("catalogue_view_date") and auction.get("catalogue_view_date"):
                 db_data["catalogue_view_date"] = auction["catalogue_view_date"]
 
-            # Fallback and default alignments for Canara Bank and common fields
-            if db_data.get("emd_bank_name") and "CANARA" in str(db_data.get("emd_bank_name")).upper():
-                if not db_data.get("emd_ifsc"):
-                    db_data["emd_ifsc"] = "CNRB0005248"
-
             # Parse submit_application to standard string format
             date_str = db_data.get("submit_application")
             parsed_submit_dt = None
@@ -406,7 +401,12 @@ class DatabaseService:
             logger.info("=== DEBUG LOG [2/3] Normalized DB Data ===")
             logger.info("%s", filtered_auction)
 
-            saved_obj = await self.auction_repository.create(Auction(**filtered_auction))
+            # Preserve extra extracted keys (e.g. loan_number, reserve_price, borrower_name) for downstream API serializer
+            for k, v in auction.items():
+                if k not in filtered_auction and v not in ("", None):
+                    filtered_auction[k] = v
+
+            saved_obj = await self.auction_repository.create(Auction(**{k: v for k, v in filtered_auction.items() if k in valid_keys}))
             return filtered_auction
 
     async def get_upload(

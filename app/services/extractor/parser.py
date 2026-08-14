@@ -2005,8 +2005,8 @@ class AuctionParser:
                         graph_candidates.append({
                             "auction_no": str(c_idx).zfill(2),
                             "borrower_name": doc_graph.borrower_name.value if doc_graph.borrower_name else "",
-                            "institution_seller": doc_graph.seller_name.value if doc_graph.seller_name else "Canara Bank",
-                            "seller_name": doc_graph.seller_name.value if doc_graph.seller_name else "Canara Bank",
+                            "institution_seller": doc_graph.seller_name.value if doc_graph.seller_name else "",
+                            "seller_name": doc_graph.seller_name.value if doc_graph.seller_name else "",
                             "asset_category": row.asset_category,
                             "asset_type": row.asset_type,
                             "auction_description": row.asset_name,
@@ -2499,7 +2499,7 @@ class AuctionParser:
             flat_auc["auction_number"] = flat_auc.get("auction_number") or flat_auc.get("auction_no") or mapped_auc.get("auction_no") or str(idx + 1).zfill(2)
             flat_auc["auction_no"] = flat_auc["auction_number"]
             flat_auc["p_auction_number"] = flat_auc["auction_number"]
-            flat_auc["seller_name"] = flat_auc.get("seller_name") or flat_auc.get("institution_seller") or flat_auc.get("institution_seller_name") or "Canara Bank"
+            flat_auc["seller_name"] = flat_auc.get("seller_name") or flat_auc.get("institution_seller") or flat_auc.get("institution_seller_name") or ""
             flat_auc["institution_seller"] = flat_auc["seller_name"]
             flat_auc["asset_location"] = flat_auc.get("asset_location") or flat_auc.get("product_location") or flat_auc.get("assets_location") or flat_auc.get("property_address") or flat_auc.get("description") or ""
             flat_auc["product_location"] = flat_auc["asset_location"]
