@@ -400,12 +400,8 @@ class AuctionPipeline:
         ocr_text = ""
         try:
             from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
+            # Only use cached OCR if it belongs to THIS exact image — never fall back to a different image's cache
             cached_idx = SpatialOCRIndexCache.get(original_file_path) or SpatialOCRIndexCache.get(image_path)
-            if not cached_idx and hasattr(SpatialOCRIndexCache, "_cache") and SpatialOCRIndexCache._cache:
-                for active_k in list(SpatialOCRIndexCache._cache.keys()):
-                    if active_k:
-                        cached_idx = SpatialOCRIndexCache._cache[active_k]
-                        break
 
             if cached_idx:
                 if bbox_meta and "x" in bbox_meta and "y" in bbox_meta:
@@ -432,6 +428,31 @@ class AuctionPipeline:
                 logger.info("Executing Fast Path: High-density OCR text found (%d words). Calling Text LLM.", len(ocr_words))
                 text_json_str = self.parser.llm.text_completion(ocr_text)
                 parsed_fields = self.parser.parse_llm_json(text_json_str, ocr_text=ocr_text)
+
+                # Enrich fast-path records with shared metadata from OCR (time, possession_type, catalogue_view_date)
+                fast_path_shared = self.parser.extract_shared_metadata(ocr_text)
+                _fast_time_fields = {
+                    "auction_start_datetime", "auction_end_datetime",
+                    "auction_date_time", "auction_end_date_time",
+                    "auction_time", "auction_end_time",
+                    "possession_type", "catalogue_view_date",
+                    "increment_price",
+                }
+                records_list = parsed_fields if isinstance(parsed_fields, list) else ([parsed_fields] if isinstance(parsed_fields, dict) else [])
+                for fp_rec in records_list:
+                    if not isinstance(fp_rec, dict):
+                        continue
+                    for sm_k, sm_v in fast_path_shared.items():
+                        if not sm_v or str(sm_v).strip() in ("", "None", "null"):
+                            continue
+                        existing_val = str(fp_rec.get(sm_k) or "").strip()
+                        if sm_k in _fast_time_fields:
+                            # Always override time fields if missing or has 00:00 placeholder
+                            if not existing_val or "00:00" in existing_val:
+                                fp_rec[sm_k] = str(sm_v).strip()
+                        elif not existing_val:
+                            fp_rec[sm_k] = str(sm_v).strip()
+                parsed_fields = records_list if isinstance(parsed_fields, list) else (records_list[0] if records_list else parsed_fields)
 
                 # Pre-PHP Consistency Checker
                 from app.services.integration.consistency_checker import PrePHPConsistencyChecker
@@ -498,7 +519,8 @@ class AuctionPipeline:
         mandatory_missing = get_missing_mandatory(record_dict)
 
         # Iterative Field Recovery Passes (Up to 3 crop expansion retries with 20%, 35%, 50% margins)
-        max_retries = 3
+        # Skip crop expansion when processing the full image (no bbox_meta) — expanding full image is pointless
+        max_retries = 3 if bbox_meta else 0
         margin_steps = [0.20, 0.35, 0.50]
         current_pass = 0
 
@@ -896,12 +918,93 @@ class AuctionPipeline:
         from app.core.logger import PipelineStageTimer
         from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
 
+        # Clear stale OCR cache from previous uploads so a new image always gets fresh OCR
+        try:
+            if hasattr(SpatialOCRIndexCache, "_cache"):
+                SpatialOCRIndexCache._cache.clear()
+        except Exception:
+            pass
+        try:
+            from app.services.ocr.paddle_service import PaddleOCRService
+            PaddleOCRService._ocr_cache.clear()
+        except Exception:
+            pass
+
         # 1. Image Load & Preprocessing
         enhanced_path = await self.enhance_image(upload.original_file_path)
 
-        # 2. Extract OCR
+        # 2. Route based on OCR availability:
+        #    - PaddleOCR available  → spatial extraction engine (real coordinates)
+        #    - PaddleOCR unavailable → OpenAI Vision LLM directly (fake coords break spatial engine)
+        if not self.ocr.is_ready():
+            logger.info(
+                "PaddleOCR unavailable — routing directly to OpenAI Vision LLM extraction "
+                "(spatial engine skipped to avoid fake-coordinate degradation)."
+            )
+            notice_result = await self.process_notice(
+                enhanced_path,
+                original_file_path=upload.original_file_path,
+            )
+            rec_fields = notice_result.get("record", [])
+            if isinstance(rec_fields, dict):
+                rec_fields = [rec_fields]
+            elif not isinstance(rec_fields, list):
+                rec_fields = []
+
+            # Extract shared catalogue_view_date from OCR text if not already in records
+            _shared_cat_date = None
+            _ocr_for_date = notice_result.get("ocr_text", "")
+            if _ocr_for_date:
+                import re as _re
+                _date_m = _re.search(
+                    r'(?i)(?:Place\s*[:.-]?\s*[A-Za-z\s,]+[,\s]+)?(?:Date|DATE|Dated|DATED)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})',
+                    _ocr_for_date
+                )
+                if _date_m:
+                    _shared_cat_date = _date_m.group(1).strip().replace(".", "-").replace("/", "-")
+
+            saved_records = []
+            for rec in rec_fields:
+                if not rec:
+                    continue
+                try:
+                    rec["upload_id"] = upload.id
+                    # Propagate shared catalogue_view_date to all records if missing
+                    if _shared_cat_date and not rec.get("catalogue_view_date"):
+                        rec["catalogue_view_date"] = _shared_cat_date
+                    saved = await self.database.save_auction(rec)
+                    saved_records.append(saved)
+                except Exception as save_err:
+                    logger.exception("Unable to save Vision LLM auction record: %s", save_err)
+
+            total_extracted = max(len(rec_fields), 1)
+            success = notice_result.get("success", False) and bool(saved_records)
+            summary = {
+                "total_notices": total_extracted,
+                "successful": len(saved_records),
+                "failed": total_extracted - len(saved_records),
+            }
+            await self.upload_service.repository.update_status(
+                upload=upload, status="COMPLETED" if success else "FAILED"
+            )
+            await self.upload_service.repository.update_statistics(
+                upload=upload,
+                total_notices=summary["total_notices"],
+                successful_notices=summary["successful"],
+                failed_notices=summary["failed"],
+                processing_time=0.0,
+                confidence_score=0.95,
+            )
+            upload_dict = {c.key: getattr(upload, c.key) for c in upload.__table__.columns} if hasattr(upload, "__table__") else upload
+            return self.build_response({
+                "upload": upload_dict,
+                "results": saved_records,
+                "summary": summary,
+                "extraction_results": [notice_result],
+            })
+
+        # 2b. PaddleOCR available — use spatial extraction engine
         raw_ocr_lines = self.ocr.extract(enhanced_path)
-        from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
         spatial_index = SpatialOCRIndexCache.get(enhanced_path)
         raw_ocr_data = spatial_index.words if spatial_index else raw_ocr_lines
 

@@ -28,42 +28,51 @@ settings = get_settings()
 
 logger = get_logger(__name__)
 
+def _test_mysql_sync(host: str, port: int, user: str, password: str, database: str) -> bool:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1.0)
+        s.connect((host, port))
+        s.close()
+    except Exception:
+        logger.warning("MySQL port %s:%s not reachable. Falling back to SQLite.", host, port)
+        return False
+    try:
+        import pymysql
+        conn = pymysql.connect(
+            host=host, port=port, user=user, password=password,
+            database=database, connect_timeout=3,
+        )
+        conn.close()
+        return True
+    except Exception as exc:
+        logger.warning("MySQL connection test failed (%s). Falling back to SQLite.", exc)
+        return False
+
+
 def init_database() -> tuple[AsyncEngine, async_sessionmaker]:
     url = settings.database_url
     dialect = "mysql"
 
-    # Synchronous socket ping to check port 3306 on localhost/127.0.0.1
-    if "localhost" in url or "127.0.0.1" in url:
-        import socket
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(0.5)
-            s.connect(("127.0.0.1", 3306))
-            s.close()
-        except Exception:
-            logger.warning(
-                "MySQL port 3306 on localhost is refused. Falling back to local SQLite database."
-            )
-            url = "sqlite+aiosqlite:///./auction_ai.db"
-            dialect = "sqlite"
+    mysql_ok = _test_mysql_sync(
+        host=settings.mysql_host,
+        port=settings.mysql_port,
+        user=settings.mysql_user,
+        password=settings.mysql_password,
+        database=settings.mysql_database,
+    )
+
+    if not mysql_ok:
+        url = "sqlite+aiosqlite:///./auction_ai.db"
+        dialect = "sqlite"
 
     if dialect == "sqlite":
-        # SQLite does not support pool_size and max_overflow parameters
-        eng = create_async_engine(
-            url,
-            echo=settings.database_echo,
-            future=True,
-            pool_pre_ping=True,
-        )
+        eng = create_async_engine(url, echo=settings.database_echo, future=True)
     else:
         eng = create_async_engine(
-            url,
-            echo=settings.database_echo,
-            future=True,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-            pool_size=10,
-            max_overflow=20,
+            url, echo=settings.database_echo, future=True,
+            pool_recycle=3600, pool_size=10, max_overflow=20,
         )
 
     logger.info("=" * 80)

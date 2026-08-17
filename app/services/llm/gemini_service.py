@@ -11,6 +11,8 @@ import json
 import logging
 import os
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -355,7 +357,7 @@ class GeminiService:
         max_retries = 3
         for attempt in range(max_retries + 1):
             try:
-                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                response = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
                 
                 # Check for rate limit / quota exhaustion (429) or temporary server unavailability (503)
                 if response.status_code in (429, 503):
@@ -502,7 +504,7 @@ class GeminiService:
         headers = {"Content-Type": "application/json"}
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response = requests.post(url, json=payload, headers=headers, timeout=60, verify=False)
             if response.status_code == 200:
                 res_data = response.json()
                 candidates = res_data.get("candidates", [])
@@ -733,7 +735,7 @@ class GeminiService:
         headers = {"Content-Type": "application/json"}
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=45)
+            response = requests.post(url, json=payload, headers=headers, timeout=45, verify=False)
             if response.status_code == 200:
                 res_data = response.json()
                 candidates = res_data.get("candidates", [])
@@ -828,7 +830,7 @@ class GeminiService:
         max_retries = 3
         for attempt in range(max_retries + 1):
             try:
-                response = requests.post(url, json=payload, headers=headers, timeout=30)
+                response = requests.post(url, json=payload, headers=headers, timeout=30, verify=False)
 
                 # Check for rate limit / quota exhaustion (429) or temporary server unavailability (503)
                 if response.status_code in (429, 503):

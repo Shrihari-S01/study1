@@ -429,10 +429,17 @@ def build_pipeline_response(result: dict) -> dict:
                 error_msg = res["message"]
                 break
 
+    _upload = result["upload"]
+    if isinstance(_upload, dict):
+        _upload_id = _upload.get("id")
+        _upload_number = _upload.get("upload_number")
+    else:
+        _upload_id = _upload.id
+        _upload_number = _upload.upload_number
     response = {
         "success": len(records_dict) > 0 or result["summary"]["total_notices"] == 0,
-        "upload_id": result["upload"].id,
-        "upload_number": result["upload"].upload_number,
+        "upload_id": _upload_id,
+        "upload_number": _upload_number,
         "total_records": len(records_dict),
         "records": records_dict,
         "summary": result["summary"],

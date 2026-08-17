@@ -664,6 +664,37 @@ class AuctionParser:
                     normalized["increment_price"] = common.get("increment_price") or 50000.0
                     normalized["bid_increment"] = normalized["increment_price"]
 
+                # auction_description alias chain — never leave blank if any description text exists
+                if not normalized.get("auction_description"):
+                    normalized["auction_description"] = (
+                        normalized.get("auction_details") or
+                        normalized.get("description") or
+                        normalized.get("property_description") or
+                        normalized.get("asset_description") or
+                        normalized.get("item_description") or
+                        ""
+                    )
+
+                # assets_location alias chain — never leave blank
+                if not normalized.get("assets_location"):
+                    normalized["assets_location"] = (
+                        normalized.get("property_address") or
+                        normalized.get("asset_location") or
+                        normalized.get("product_location") or
+                        normalized.get("location") or
+                        normalized.get("address") or
+                        ""
+                    )
+
+                # Auction end datetime: fill from auction_end_date_time or auction_end_datetime alias
+                if not normalized.get("auction_end_datetime") or str(normalized.get("auction_end_datetime")) in ("", "None", "null"):
+                    normalized["auction_end_datetime"] = (
+                        normalized.get("auction_end_date_time") or
+                        normalized.get("auction_close_datetime") or
+                        normalized.get("end_datetime") or
+                        ""
+                    )
+
                 # Fill missing supported fields
                 flat_auc = self.fill_missing(normalized)
 
@@ -1814,9 +1845,16 @@ class AuctionParser:
         if cat_m:
             shared["catalogue_view_date"] = cat_m.group(1).strip().replace(".", "-").replace("/", "-")
         else:
-            doc_date_m = re.search(r'(?i)(?:Place\s*[:.-]?\s*[A-Za-z\s]+[,\s]+)?(?:Date|DATE|Dated|DATED)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})', combined)
+            # Scan all four corners and footer/header for document issue/publication date patterns:
+            # "Place: Lucknow, Date: 22.06.2026", "Date: 22.06.2026", "Dated: 22.06.2026", "DATE: 22.06.2026"
+            doc_date_m = re.search(
+                r'(?i)(?:Place\s*[:.-]?\s*[A-Za-z\s,]+[,\s]+)?(?:Date|DATE|Dated|DATED)\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})',
+                combined
+            )
             if doc_date_m:
-                shared["document_date"] = doc_date_m.group(1).strip().replace(".", "-").replace("/", "-")
+                raw_doc_date = doc_date_m.group(1).strip().replace(".", "-").replace("/", "-")
+                shared["catalogue_view_date"] = raw_doc_date
+                shared["document_date"] = raw_doc_date
 
         # 2. Institution / Bank Name
         bank_m = re.search(r'(?i)(LIC\s+Housing\s+Finance\s+Ltd|LIC\s+HFL|Canara\s+Bank|Bank\s+of\s+Baroda|State\s+Bank\s+of\s+India|Indian\s+Bank|Punjab\s+National\s+Bank|Union\s+Bank\s+of\s+India|Axis\s+Bank|ICICI\s+Bank|HDFC\s+Bank)', combined)
@@ -1857,13 +1895,20 @@ class AuctionParser:
         clean_combined = clean_combined.replace("A.M.", "AM").replace("P.M.", "PM")
 
         auc_dt_range_m = re.search(
-            r'(?i)(?:DATE\s*(?:AND|&)?\s*TIME\s*(?:OF\s*(?:COMMENCEMENT\s*OF\s*)?(?:E-?)?AUCTION)?|Auction\s*Date\s*and\s*Time|Date\s*of\s*(?:E-?)?Auction|E-?Auction\s*Date)?\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]?\d{2,4})[,\s]* (?:FROM\s*)?(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*(?:TO|-|UNTIL)\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)',
+            r'(?i)(?:DATE\s*(?:AND|&)?\s*TIME\s*(?:OF\s*(?:COMMENCEMENT\s*OF\s*)?(?:E-?)?AUCTION)?|Auction\s*Date\s*and\s*Time|Date\s*of\s*(?:E-?)?Auction|E-?Auction\s*Date)?\s*[:.-]?\s*(\d{1,2}[./-]\d{1,2}[./-]?\d{2,4})[,\s]*(?:FROM\s*)?(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)\s*(?:TO|-|UNTIL)\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM)?)',
             clean_combined
         )
         if not auc_dt_range_m:
             auc_dt_range_m = re.search(
                 r'(?i)(\d{2}\.\d{2}\.?\d{4}|\d{2}\.\d{6})\s*FROM\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM))\s*TO\s*(\d{1,2}(?::\d{2})?\s*(?:AM|PM))',
                 clean_combined
+            )
+        if not auc_dt_range_m:
+            # Fallback: simple "DD.MM.YYYY, HH:MM AM TO HH:MM PM" (e.g. "28.07.2026, 10:00 AM TO 01:00 PM")
+            auc_dt_range_m = re.search(
+                r'(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})[,\s]+(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+TO\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)',
+                clean_combined,
+                flags=re.IGNORECASE
             )
 
         if auc_dt_range_m:
@@ -1909,6 +1954,11 @@ class AuctionParser:
             except Exception:
                 pass
 
+        # 7. Possession Type — scan for SYMBOLIC / PHYSICAL / CONSTRUCTIVE anywhere in the notice
+        poss_m = re.search(r'(?i)\b(SYMBOLIC|PHYSICAL|CONSTRUCTIVE)\b', combined)
+        if poss_m:
+            shared["possession_type"] = poss_m.group(1).upper()
+
         return shared
 
     def parse_vision(
@@ -1942,7 +1992,7 @@ class AuctionParser:
         from app.services.ocr.spatial_ocr_indexer import SpatialOCRIndexCache
         from app.services.detection.spatial_graph_engine import SpatialDocumentGraphEngine
 
-        spatial_index = SpatialOCRIndexCache.get(image_path)
+        spatial_index = None  # image_path not available in parse_vision scope; spatial index accessed via cache elsewhere
         shared_metadata = {}
         if spatial_index:
             doc_graph = SpatialDocumentGraphEngine.build_document_graph(spatial_index)
@@ -2097,11 +2147,19 @@ class AuctionParser:
 
             # STAGE 3: METADATA PROPAGATION
             # Copy shared metadata into every auction record
+            _time_fields = {"auction_start_datetime", "auction_end_datetime", "auction_date_time",
+                            "auction_end_date_time", "auction_time", "auction_end_time"}
             for auc_item in llm_auctions:
                 if isinstance(auc_item, dict):
                     for sm_k, sm_v in common.items():
-                        if sm_v and str(sm_v).strip() not in ("", "None", "null") and not auc_item.get(sm_k):
-                            auc_item[sm_k] = str(sm_v).strip()
+                        if sm_v and str(sm_v).strip() not in ("", "None", "null"):
+                            existing = str(auc_item.get(sm_k) or "").strip()
+                            # Override time fields if existing value has 00:00 (no time) and shared has real time
+                            if sm_k in _time_fields:
+                                if not existing or "00:00" in existing:
+                                    auc_item[sm_k] = str(sm_v).strip()
+                            elif not existing:
+                                auc_item[sm_k] = str(sm_v).strip()
 
             first_auction = llm_auctions[0] if (llm_auctions and isinstance(llm_auctions[0], dict)) else {}
 

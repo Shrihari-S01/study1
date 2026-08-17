@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import sys
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Add workspace root to sys.path to allow standalone execution
 root_path = Path(__file__).resolve().parent.parent.parent.parent
@@ -201,7 +203,7 @@ class PaddleOCRService:
             for attempt in range(max_retries):
                 session = requests.Session()
                 try:
-                    response = session.post(url, json=payload, headers=headers, timeout=120)
+                    response = session.post(url, json=payload, headers=headers, timeout=120, verify=False)
                     if response.status_code == 200:
                         break
                     elif response.status_code in (503, 429) and attempt < max_retries - 1:

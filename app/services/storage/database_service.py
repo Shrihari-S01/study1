@@ -103,6 +103,39 @@ class DatabaseService:
             if not db_data.get("asset_category"):
                 db_data["asset_category"] = common.get("asset_category") or auction.get("asset_category")
 
+            # Post-process: infer asset_type and asset_category from description if still empty
+            if not db_data.get("asset_type") or not db_data.get("asset_category"):
+                _desc_text = " ".join(filter(None, [
+                    str(db_data.get("auction_description") or ""),
+                    str(db_data.get("assets_location") or ""),
+                    str(auction.get("auction_description") or ""),
+                    str(auction.get("description") or ""),
+                ])).lower()
+                _movable_kw = ["plant", "machinery", "machine", "equipment", "tool", "stock", "book debt",
+                               "furniture", "fixture", "electronic", "generator", "crane", "vehicle", "car",
+                               "truck", "two-wheeler", "motorbike", "scrap", "gold", "silver", "jewel", "pearl"]
+                _immovable_kw = ["plot", "land", "flat", "house", "building", "property", "residential",
+                                 "commercial", "industrial", "survey no", "khasra", "rs no", "door no",
+                                 "sq.mt", "sq.ft", "hectare", "acre", "bungalow", "shop", "office"]
+                _is_movable = any(kw in _desc_text for kw in _movable_kw)
+                _is_immovable = any(kw in _desc_text for kw in _immovable_kw)
+                if not db_data.get("asset_type"):
+                    if _is_immovable and not _is_movable:
+                        db_data["asset_type"] = "Immovable"
+                    elif _is_movable:
+                        db_data["asset_type"] = "Movable"
+                if not db_data.get("asset_category"):
+                    if _is_immovable and not _is_movable:
+                        db_data["asset_category"] = "property"
+                    elif any(kw in _desc_text for kw in ["gold", "silver", "jewel", "ornament"]):
+                        db_data["asset_category"] = "gold"
+                    elif any(kw in _desc_text for kw in ["vehicle", "car", "truck", "motorbike", "two-wheeler"]):
+                        db_data["asset_category"] = "vehicle"
+                    elif any(kw in _desc_text for kw in ["pearl", "gem", "stone"]):
+                        db_data["asset_category"] = "pearl"
+                    elif _is_movable:
+                        db_data["asset_category"] = "scrap"
+
             if not db_data.get("auction_no"):
                 db_data["auction_no"] = common.get("auction_number") or auction.get("auction_no")
 
@@ -139,6 +172,21 @@ class DatabaseService:
 
             if not db_data.get("currency"):
                 db_data["currency"] = common.get("currency") or auction.get("currency") or "INR"
+
+            # EMD sanity guard: EMD must be ≤ 20% of reserve_price (Indian auctions: typically 10%)
+            # If EMD > reserve_price × 0.5, values are likely transposed — recalculate as 10%
+            try:
+                _rp = float(db_data.get("auction_start_price") or 0)
+                _emd = float(db_data.get("emd_amount") or 0)
+                if _rp > 0 and _emd > 0 and _emd > _rp * 0.5:
+                    _corrected_emd = round(_rp * 0.10, 2)
+                    logger.warning(
+                        "EMD sanity check failed: emd=%s > 50%% of reserve=%s. Correcting EMD to 10%% = %s",
+                        _emd, _rp, _corrected_emd
+                    )
+                    db_data["emd_amount"] = Decimal(str(_corrected_emd))
+            except Exception:
+                pass
 
             if not db_data.get("auction_live_status"):
                 db_data["auction_live_status"] = common.get("auction_live_status") or auction.get("auction_live_status")
@@ -216,36 +264,40 @@ class DatabaseService:
                 except Exception:
                     db_data["auction_extend_time"] = None
 
-            # Parse datetime fields
-            if not db_data.get("auction_start_datetime"):
-                date_str = auction.get("auction_date_time") or auction.get("auction_start_date_time") or auction.get("auction_date")
-                if date_str:
-                    try:
-                        import dateutil.parser
-                        db_data["auction_start_datetime"] = dateutil.parser.parse(str(date_str))
-                    except Exception:
-                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
-                            try:
-                                clean_date = str(date_str).split()[0]
-                                db_data["auction_start_datetime"] = datetime.strptime(clean_date, fmt)
-                                break
-                            except Exception:
-                                continue
+            # Parse ALL datetime fields — coerce any string to a proper datetime object
+            import dateutil.parser as _dtp
 
-            if not db_data.get("auction_end_datetime"):
-                date_str = auction.get("auction_end_date_time")
-                if date_str:
+            def _parse_dt(val):
+                """Convert any date/datetime string to a Python datetime, or return None."""
+                if val is None:
+                    return None
+                if isinstance(val, datetime):
+                    return val
+                s = str(val).strip()
+                if not s or s.lower() in ("none", "null", ""):
+                    return None
+                # Try dateutil first (handles DD-MM-YYYY HH:MM, YYYY-MM-DD HH:MM:SS, etc.)
+                try:
+                    return _dtp.parse(s, dayfirst=True)
+                except Exception:
+                    pass
+                # Manual format fallbacks
+                for fmt in ("%d-%m-%Y %H:%M", "%d-%m-%Y %H:%M:%S", "%d/%m/%Y %H:%M",
+                             "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y", "%d-%m-%Y",
+                             "%Y-%m-%d", "%d.%m.%Y"):
                     try:
-                        import dateutil.parser
-                        db_data["auction_end_datetime"] = dateutil.parser.parse(str(date_str))
+                        return datetime.strptime(s.split(".")[0].strip(), fmt)
                     except Exception:
-                        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
-                            try:
-                                clean_date = str(date_str).split()[0]
-                                db_data["auction_end_datetime"] = datetime.strptime(clean_date, fmt)
-                                break
-                            except Exception:
-                                continue
+                        continue
+                return None
+
+            # auction_start_datetime
+            _start_raw = db_data.get("auction_start_datetime") or auction.get("auction_date_time") or auction.get("auction_start_date_time") or auction.get("auction_date")
+            db_data["auction_start_datetime"] = _parse_dt(_start_raw)
+
+            # auction_end_datetime
+            _end_raw = db_data.get("auction_end_datetime") or auction.get("auction_end_date_time") or auction.get("auction_end_datetime")
+            db_data["auction_end_datetime"] = _parse_dt(_end_raw)
 
             # Parse catalogue_view_date from auction dict / notice publication date
             raw_cat = (
@@ -297,6 +349,16 @@ class DatabaseService:
                     except Exception:
                         pass
                 return dt_val
+
+            # Re-parse start/end in case force_auction_year receives a string (defensive)
+            if db_data.get("auction_start_datetime") and not isinstance(db_data["auction_start_datetime"], datetime):
+                db_data["auction_start_datetime"] = _parse_dt(db_data["auction_start_datetime"])
+            if db_data.get("auction_end_datetime") and not isinstance(db_data["auction_end_datetime"], datetime):
+                db_data["auction_end_datetime"] = _parse_dt(db_data["auction_end_datetime"])
+            if db_data.get("inspection_from_date") and not isinstance(db_data["inspection_from_date"], datetime):
+                db_data["inspection_from_date"] = _parse_dt(db_data["inspection_from_date"])
+            if db_data.get("inspection_to_date") and not isinstance(db_data["inspection_to_date"], datetime):
+                db_data["inspection_to_date"] = _parse_dt(db_data["inspection_to_date"])
 
             if db_data.get("auction_start_datetime"):
                 db_data["auction_start_datetime"] = force_auction_year(db_data["auction_start_datetime"])

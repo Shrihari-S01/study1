@@ -13,6 +13,8 @@ import logging
 import os
 import re
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -174,7 +176,18 @@ class LLMService:
                 "You are an expert structural document data extraction engine for Indian bank auction notices. "
                 "Extract all auction details into the strict JSON schema provided. "
                 "Follow all schema rules, digit integrity, Lakh/Crore calculations, and field mappings. "
-                "Return raw JSON format only."
+                "Return raw JSON format only. NEVER invent or fabricate any data — if a field is not in the text, return \"\".\n\n"
+                "KEY RULES:\n"
+                "1. asset_type: 'movable' or 'immovable'. Plant/Machinery/Equipment/Stocks → movable. Land/Building/Flat/Property → immovable.\n"
+                "2. asset_category: 'scrap', 'gold', 'vehicle', 'pearl', or 'property'. Plant/Machinery/Equipment/Industrial/Stocks/Book Debts → scrap. Gold/Jewelry → gold. Vehicle/Car/Truck → vehicle. Land/Building/Flat → property.\n"
+                "3. catalogue_view_date = issue/publication date from document corners — pattern 'Place: City, Date: DD.MM.YYYY' or 'Date: DD.MM.YYYY'. Format: DD-MM-YYYY.\n"
+                "4. AUCTION TIME (CRITICAL): Extract start and end time from patterns like '28.07.2026, 10:00 AM TO 01:00 PM' or 'DATE & TIME OF E-AUCTION : 28.07.2026, 10:00 AM TO 01:00 PM'. "
+                "Set auction_start_date_time = 'DD-MM-YYYY HH:MM' and auction_end_date_time = 'DD-MM-YYYY HH:MM'. NEVER return 00:00 if a real time is visible in the text.\n"
+                "5. auction_description (CRITICAL): MUST contain the verbatim asset/property description for each lot — machine names, model numbers, survey numbers, boundaries, area. NEVER leave blank if description text is present.\n"
+                "6. property_address / assets_location: copy exact address or asset location text. If assets are machinery items, copy the factory/plant address. NEVER leave blank.\n"
+                "7. Generate a SEPARATE auction object for each serial number block (Sl.No., SI.No.). If one row has multiple separate properties (Property No.1, Property No.2) with individual prices, split into '2a', '2b', etc.\n"
+                "8. Strip all commas from financial numbers and return pure integers (e.g. '₹3,05,04,500' → 30504500).\n"
+                "9. ZERO DUMMY DATA: If a field genuinely has no value in the document, return \"\". Never insert placeholders, guesses, or template values.\n"
             )
             prompt = (
                 f"Extract structured auction data from the following high-confidence document text:\n"
@@ -196,7 +209,7 @@ class LLMService:
                 "Authorization": f"Bearer {self.openai_key}",
                 "Connection": "close"
             }
-            response = self._post_with_retry(url, payload, headers, timeout=30, max_retries=1)
+            response = self._post_with_retry(url, payload, headers, timeout=90, max_retries=1)
             if not response or response.status_code == 429 or response.status_code != 200:
                 self.openai_available = False
                 logger.debug("OpenAI text completion unavailable (status %s). Setting openai_available = False for document context.", getattr(response, "status_code", None))
@@ -323,9 +336,14 @@ class LLMService:
                 "4. LITERAL GEOGRAPHIC PARSING: Capture the complete, exact boundary or location text inside the \"property_address\" field. From that text block, cleanly isolate the standalone 6-digit pin code, the target district, and the state into their dedicated individual fields.\n\n"
                 "### STRICT STANDARDIZATION & VALUE CONSTRAINTS:\n"
                 "1. asset_type: Must be strictly one of: \"movable\" or \"immovable\". Do not use any other words.\n"
+                "   - Plant & Machinery, Equipment, Tools, Industrial items, Stocks, Book Debts, Vehicles, Gold, Scrap → \"movable\".\n"
+                "   - Residential/Commercial/Industrial property, Land, Building, Flat, House, Plot → \"immovable\".\n"
                 "2. asset_category: Must be strictly one of: \"scrap\", \"gold\", \"vehicle\", \"pearl\", or \"property\".\n"
-                "   - If asset_type is \"movable\", asset_category must be one of \"scrap\", \"gold\", \"vehicle\", or \"pearl\".\n"
-                "   - If asset_type is \"immovable\", asset_category must be \"property\".\n"
+                "   - Plant & Machinery, Equipment, Tools, Industrial assets, Stocks, Book Debts → asset_type=\"movable\", asset_category=\"scrap\".\n"
+                "   - Gold, Silver, Jewelry, Ornaments → asset_type=\"movable\", asset_category=\"gold\".\n"
+                "   - Vehicle, Car, Truck, Two-Wheeler → asset_type=\"movable\", asset_category=\"vehicle\".\n"
+                "   - Pearl, Gems, Precious stones → asset_type=\"movable\", asset_category=\"pearl\".\n"
+                "   - Land, Building, Flat, House, Plot, Immovable property → asset_type=\"immovable\", asset_category=\"property\".\n"
                 "3. AUCTION TYPE: Must be strictly \"Forward\", \"Reverse\", or \"Tender\". If not found, return \"\".\n"
                 "4. AUTO EXTENSION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
                 "5. AUTO EXTENSION MODE: Must be strictly \"Infinite\" or \"Custom\". If not mentioned, default to \"\".\n"
@@ -333,6 +351,12 @@ class LLMService:
                 "7. FIRST BID ACCEPTANCE CONDITION: Must be strictly \"Yes\" or \"No\". If not mentioned, default to \"\".\n"
                 "8. PAYMENT TYPE: Extract the raw payment mode/type printed in the notice (e.g. \"RTGS/ NEFT\", \"DD\", \"Cheque\", \"Amount\", \"Transaction Value\"). For Property, choose strictly from \"Amount\" or \"Transaction Value\".\n"
                 "9. DATES & TIMES FORMATTING: Format all date and time fields (including \"auction_start_date_time\", \"auction_end_date_time\", \"submit_application\", \"inspection_schedule_from\", \"inspection_schedule_to\", \"repo_date\", \"catalogue_view_date\") strictly in standard format \"DD-MM-YYYY HH:MM\" or \"DD-MM-YYYY\" if no time is available.\n"
+                "   CATALOGUE_VIEW_DATE (CRITICAL): This is the notice's issue/publication date — printed at the 4 corners (top-left, top-right, bottom-left, bottom-right) or footer/header. Look for patterns like:\n"
+                "   • 'Place: Lucknow, Date: 22.06.2026'  →  catalogue_view_date = '22-06-2026'\n"
+                "   • 'Date: 22.06.2026'  →  catalogue_view_date = '22-06-2026'\n"
+                "   • 'Dated: 22.06.2026'  →  catalogue_view_date = '22-06-2026'\n"
+                "   • 'DATE: 22.06.2026'  →  catalogue_view_date = '22-06-2026'\n"
+                "   You MUST scan every corner and every line for this date and populate the catalogue_view_date field in BOTH common_fields AND each auction object.\n"
                 "10. PER-AUCTION ACCOUNT DETAILS: Notice images typically list separate \"ACCOUNT DETAILS\" (Bank, Account No, IFSC Code) for each individual property/asset block. Extract these specifically inside each object in the \"auctions\" array (under \"emd_bank_name\", \"emd_account_no\", and \"emd_ifsc\").\n"
                 "11. AUCTION DESCRIPTION (CRITICAL): The \"auction_description\" MUST be the exact, verbatim property description paragraph/list. You must copy the text word-for-word, preserving all original survey numbers, patta numbers, boundary plots, boundaries (East, West, North, South), areas, layout names, and addresses exactly as they appear in the image for that specific item. Absolutely no summarization, truncation, consolidation, or omission of any boundary/area details is permitted. Ensure the entire paragraph/list is extracted in full. Note that the OCR helper text is jumbled horizontally across columns; you MUST read the columns and boundaries visually from the image to reconstruct the correct boundaries and keep them with their respective properties.\n"
                 "12. VISUAL DIGIT GUARDRAILS & PRINT ARTIFACT CONTROLS (CRITICAL): Newspaper print quality is often poor with dot-matrix text, low ink, or scanning noise. You MUST cross-validate shapes of digits carefully. Check for high-risk transpositions: `8` vs `3` or `0`, and `5` vs `6`. Look at neighboring lines, column totals, or contextual hints to resolve digits correctly. Never swap or corrupt phone/officer digits. DO NOT swap or rotate the values of reserve_price and emd_amount. The reserve_price is the asset's reserve price (usually a mid-size number per item, e.g. 6,078,500), and emd_amount is the Earnest Money Deposit (usually exactly 10% of the reserve_price, e.g. 6,07,850). If a single table row or section lists multiple reserve prices and EMDs for different properties (e.g. 3,05,04,500 and 4,24,69,000 written stacked or line-by-line), you MUST split them and extract each property as a separate auction object in the 'auctions' array with its respective correct reserve price and EMD. Never omit any reserve price listed in the table. Inspect column headers in the image visually to confirm which value belongs to which field.\n"
@@ -433,7 +457,7 @@ class LLMService:
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info("Executing OpenAI API request (attempt %d/%d)...", attempt, max_retries)
-                response = session.post(url, json=payload, headers=req_headers, timeout=timeout)
+                response = session.post(url, json=payload, headers=req_headers, timeout=timeout, verify=False)
 
                 if response.status_code == 429:
                     logger.debug("OpenAI enrichment unavailable (HTTP 429 rate limit); continuing with OCR extraction.")
