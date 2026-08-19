@@ -5,6 +5,8 @@
 Built with **FastAPI**, **SQLAlchemy (Async)**, **PaddleOCR**, **PyMuPDF**, and **Google Gemini AI**, the system parses complex, multi-column bank sale notices and converts them into standardized, database-ready JSON records.
 
 ---
+testing
+
 
 ## 📋 Table of Contents
 1. [Key Features](#-key-features)
